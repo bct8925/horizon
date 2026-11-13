@@ -5,11 +5,13 @@
 //! `horizon-android.txt`, then the game runs as the desktop program does.
 //!
 //! Unsafe code lives here, not in the game (which forbids it): the entry point
-//! the activity looks up by name, the JNI calls that bring the controller in
-//! and report the app's lifecycle, and handing stdout and stderr to logcat.
+//! the activity looks up by name, the JNI calls that bring the controller and the
+//! bottom screen in and report the app's lifecycle, and handing stdout and stderr to logcat.
 
 #[cfg(target_os = "android")]
 mod app;
+#[cfg(target_os = "android")]
+mod bottom;
 mod config;
 #[cfg(target_os = "android")]
 mod logcat;

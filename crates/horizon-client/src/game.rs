@@ -80,6 +80,7 @@ mod boat_rider_fixture;
 mod boats;
 mod books;
 mod bossbars;
+mod bottom_panel;
 mod breezes;
 mod brush;
 mod buckets;
@@ -2387,6 +2388,8 @@ struct Game<'a> {
     /// runs normally, so `/tick freeze` holds it and `/tick step` moves it on.
     texture_ticks: u64,
     health_hud: hud_layout::HealthHud,
+    /// The second screen's hotbar and bars (game/bottom_panel.rs).
+    bottom_panel: bottom_panel::BottomPanel,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
     message: Option<(String, Instant)>,
@@ -5844,6 +5847,66 @@ impl Game<'_> {
         self.draw_pad_over_hud(&mut batch);
         batch
     }
+    /// `Hud.extractPlayerHealth`'s inputs (hearts, armour, food, air) and where the player
+    /// is, for a survival or adventure player; the window's HUD and the second screen's panel
+    /// lay them out.
+    pub(super) fn health_inputs(
+        &mut self,
+        vehicle_hearts: i32,
+    ) -> Option<(hud_layout::HealthInputs, [f64; 3])> {
+        if self.creative || self.spectator() {
+            return None;
+        }
+        let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
+        let p = self.player.as_mut()?;
+        let effects = &self.potions.effects;
+        let kind = if effects.get("poison").is_some() {
+            hud_layout::HeartKind::Poisoned
+        } else if effects.get("wither").is_some() {
+            hud_layout::HeartKind::Withered
+        } else if p.is_fully_frozen() {
+            hud_layout::HeartKind::Frozen
+        } else {
+            hud_layout::HeartKind::Normal
+        };
+        // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
+        // the surface, not merely in the water block.
+        let under_water = p.is_eye_in_fluid(horizon_client::motion::WATER);
+        let inputs = hud_layout::HealthInputs {
+            tick: visual_ticks as i32,
+            millis: visual_millis,
+            health: p.health.health(),
+            max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+            absorption: p.health.absorption(),
+            armor: p
+                .attribute("minecraft:armor")
+                .or_else(|_| p.attribute("armor"))
+                .unwrap_or(0.0) as i32,
+            food: p.health.food.food,
+            saturation: p.health.food.saturation,
+            kind,
+            regeneration: effects.get("regeneration").is_some(),
+            hunger: effects.get("hunger").is_some(),
+            hardcore: self.level.hardcore,
+            damage_cooldown: p.health.hurt.cooldown > 0,
+            air: p.air,
+            max_air: 300,
+            under_water,
+            vehicle_hearts,
+        };
+        Some((inputs, [p.position.x, p.position.y, p.position.z]))
+    }
+    /// Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard by this client only.
+    pub(super) fn play_bubble_pop(&mut self, (volume, pitch): (f32, f32), at: [f64; 3]) {
+        let players = horizon_client::settings::SOUND_SOURCES
+            .iter()
+            .position(|s| *s == "player")
+            .unwrap_or(0);
+        let capture = self.audio.capture.take();
+        self.audio
+            .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+        self.audio.capture = capture;
+    }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
         self.input_hud_begin();
         let mut batch = HudBatch::new(size);
@@ -5951,6 +6014,8 @@ impl Game<'_> {
             in_game_ui(self.screen, self.book.is_some() || self.sign_edit.is_some()),
         );
         self.ui.room = self.hud_room(w, h, show_hud);
+        // The hotbar and the bars above it go on the second screen's panel where there is one.
+        let on_panel = self.bottom_panel.shown();
         // What the gameplay guide keeps off starts after the view's full overlays.
         let mut guide_from = 0;
         if show_hud {
@@ -5990,6 +6055,9 @@ impl Game<'_> {
                 });
             }
             self.gui_layer("minecraft:hotbar", &mut batch, |g, batch| {
+                if on_panel {
+                    return;
+                }
                 if spectator {
                     g.draw_spectator_hotbar(batch);
                 } else {
@@ -6052,47 +6120,11 @@ impl Game<'_> {
             } else {
                 self.draw_mount_hud(&mut batch, wi, hi)
             };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            if !self.creative
-                && !spectator
-                && let Some(p) = &mut self.player
+            // On the second screen's panel instead, where there is one (`bottom_panel`).
+            if !spectator
+                && !on_panel
+                && let Some((inputs, at)) = self.health_inputs(vehicle_hearts)
             {
-                let effects = &self.potions.effects;
-                let kind = if effects.get("poison").is_some() {
-                    hud_layout::HeartKind::Poisoned
-                } else if effects.get("wither").is_some() {
-                    hud_layout::HeartKind::Withered
-                } else if p.is_fully_frozen() {
-                    hud_layout::HeartKind::Frozen
-                } else {
-                    hud_layout::HeartKind::Normal
-                };
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(horizon_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
-                };
-                let at = [p.position.x, p.position.y, p.position.z];
                 // The native mods' health HUD (`native_health_hud`): a mod
                 // that answers draws every row instead.
                 let mut native_health_hud = None;
@@ -6107,21 +6139,16 @@ impl Game<'_> {
                 self.gui_layer("minecraft:player_health", &mut batch, |g, batch| {
                     hud_layout::paint(batch, &g.gui.atlas, &draws);
                 });
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
-                    let players = horizon_client::settings::SOUND_SOURCES
-                        .iter()
-                        .position(|s| *s == "player")
-                        .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
+                if let Some(sound) = self.health_hud.bubble_pop_sound.take() {
+                    self.play_bubble_pop(sound, at);
                 }
             }
-            // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
+            // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar,
+            // on the second screen's panel instead where there is one.
             self.gui_layer("minecraft:contextual_info_bar", &mut batch, |g, batch| {
+                if on_panel {
+                    return;
+                }
                 if contextual == ContextualBar::JumpableVehicle {
                     g.draw_jump_bar(batch, wi, hi);
                 }
@@ -9785,6 +9812,7 @@ impl Game<'_> {
         let _cleanup = spans::guard("pr_cleanup");
         // A frame the surface refused (occluded, lost, timed out) is `Ok(false)`.
         self.frame_drawn = matches!(result, Ok(true));
+        self.draw_bottom_panel();
         // Restore storage even when rendering fails (for example, a lost surface).
         self.entity_vertices = entities;
         *self.entity_spans.get_mut() = entity_spans;
@@ -11511,6 +11539,7 @@ impl<'a> Game<'a> {
             glowing_vertices: Default::default(),
             pack_ids: None,
             health_hud: hud_layout::HealthHud::default(),
+            bottom_panel: Default::default(),
             started: now,
             spectator_gui: Default::default(),
             previous: now,

@@ -119,6 +119,9 @@ pub struct Extras {
     pub ui_sound_reserve: bool,
     /// The player's own name tag over its model in third person.
     pub own_name_tag: bool,
+    /// A second screen beside the window (the AYANEO Pocket DS's bottom one) shows the
+    /// hotbar and the bars above it (`game/bottom_panel.rs`). On Android only.
+    pub bottom_screen: bool,
     /// No particles from breaking or mining a block (other particles stay).
     pub hide_block_particles: bool,
     /// Mouse Tweaks-style drags in the inventory and storage containers.
@@ -202,6 +205,7 @@ impl Default for Extras {
             auto_reconnect: false,
             ui_sound_reserve: false,
             own_name_tag: false,
+            bottom_screen: true,
             hide_block_particles: false,
             mouse_tweaks: false,
             mouse_tweaks_wheel: true,
@@ -294,6 +298,7 @@ impl Extras {
                 "autoReconnect" => e.auto_reconnect = flag(e.auto_reconnect),
                 "uiSoundReserve" => e.ui_sound_reserve = flag(e.ui_sound_reserve),
                 "ownNameTag" => e.own_name_tag = flag(e.own_name_tag),
+                "bottomScreen" => e.bottom_screen = flag(e.bottom_screen),
                 "hideBlockParticles" => e.hide_block_particles = flag(e.hide_block_particles),
                 "mouseTweaks" => e.mouse_tweaks = flag(e.mouse_tweaks),
                 "mouseTweaksWheel" => e.mouse_tweaks_wheel = flag(e.mouse_tweaks_wheel),
@@ -386,6 +391,7 @@ impl Extras {
             bool_text(self.three_d_skin_layers),
         );
         text.push_str(&format!("{EMOTE_KEY}:{}\n", self.emote_key));
+        text.push_str(&format!("bottomScreen:{}\n", bool_text(self.bottom_screen)));
         self.pvp.serialize(&mut text);
         text
     }
@@ -543,6 +549,8 @@ pub enum Item {
     Fullbright,
     DynamicLights,
     OwnNameTag,
+    /// The second screen's panel (Android only).
+    BottomScreen,
     HideBlockParticles,
     AutoReconnect,
     UiSoundReserve,
@@ -577,7 +585,7 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
     // are on the graphics screen's Quality page (`graphics_ui::rows`), not here. The Cosmetics
     // group comes last, from the cosmetics' own section (`pages::Place::Extras`) while they are
     // offered.
-    vec![
+    let mut rows = vec![
         Err("horizon.extras.header.third_person"),
         Ok(OwnNameTag),
         Err("horizon.extras.header.inventory"),
@@ -598,7 +606,12 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Err("horizon.extras.header.menus"),
         Ok(WheelCyclesSettings),
         Ok(PackBrowser),
-    ]
+    ];
+    // Only Android hands the game a second screen (`platform::second_screen`).
+    if cfg!(target_os = "android") {
+        rows.extend([Err("horizon.extras.header.screens"), Ok(BottomScreen)]);
+    }
+    rows
 }
 impl Item {
     /// The language key of the caption (`horizon.*`, assets/horizon/lang).
@@ -607,6 +620,7 @@ impl Item {
             Item::Fullbright => "horizon.extras.fullbright",
             Item::DynamicLights => "horizon.extras.dynamic_lights",
             Item::OwnNameTag => "horizon.extras.own_name_tag",
+            Item::BottomScreen => "horizon.extras.bottom_screen",
             Item::HideBlockParticles => "horizon.extras.hide_block_particles",
             Item::AutoReconnect => "horizon.extras.auto_reconnect",
             Item::UiSoundReserve => "horizon.extras.ui_sound_reserve",
@@ -633,6 +647,7 @@ impl Item {
             Item::Fullbright => "horizon.extras.fullbright.tooltip",
             Item::DynamicLights => "horizon.extras.dynamic_lights.tooltip",
             Item::OwnNameTag => "horizon.extras.own_name_tag.tooltip",
+            Item::BottomScreen => "horizon.extras.bottom_screen.tooltip",
             Item::HideBlockParticles => "horizon.extras.hide_block_particles.tooltip",
             Item::AutoReconnect => "horizon.extras.auto_reconnect.tooltip",
             Item::UiSoundReserve => "horizon.extras.ui_sound_reserve.tooltip",
@@ -668,6 +683,7 @@ impl Item {
             Item::Fullbright => "Fullbright",
             Item::DynamicLights => "Dynamic lights",
             Item::OwnNameTag => "Own name tag",
+            Item::BottomScreen => "Bottom screen",
             Item::HideBlockParticles => "Hide block-break particles",
             Item::AutoReconnect => "Auto-reconnect",
             Item::UiSoundReserve => "Keep channels for UI sounds",
@@ -697,9 +713,10 @@ impl Item {
             SortKey => Sort,
             ChatIndicator => ChatAnimation,
             Pvp(o) => return o.parent().map(Pvp),
-            Fullbright | DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
-            | AutoReconnect | NoAi | AgentControl | ReproKeys | Splitscreen | ChatAnimation
-            | WheelCyclesSettings | MusicPage | PackBrowser | Pregen => {
+            Fullbright | DynamicLights | OwnNameTag | BottomScreen | HideBlockParticles
+            | MouseTweaks | Sort | AutoReconnect | NoAi | AgentControl | ReproKeys
+            | Splitscreen | ChatAnimation | WheelCyclesSettings | MusicPage | PackBrowser
+            | Pregen => {
                 return None;
             }
         })
@@ -716,6 +733,9 @@ impl Item {
             }
             Item::OwnNameTag => {
                 "Shows your name above your head in third person, as other players see it. Hidden when the server hides your team's names or you're invisible."
+            }
+            Item::BottomScreen => {
+                "Shows the hotbar, health, hunger, armor, experience and coordinates on the second screen, where tapping a slot selects it. Off: they stay on the main screen and the second screen is left alone."
             }
             Item::HideBlockParticles => {
                 "Hides the debris particles that burst from a broken block and crumble off the one you mine. Other particles stay."
@@ -776,6 +796,7 @@ impl Item {
             Item::DynamicLights => Some(Cost::Low),
             Item::ChatAnimation => Some(Cost::None),
             Item::OwnNameTag
+            | Item::BottomScreen
             | Item::HideBlockParticles
             | Item::AutoReconnect
             | Item::MouseTweaks
@@ -792,6 +813,7 @@ impl Item {
             Item::Fullbright => e.fullbright,
             Item::DynamicLights => e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag,
+            Item::BottomScreen => e.bottom_screen,
             Item::HideBlockParticles => e.hide_block_particles,
             Item::AutoReconnect => e.auto_reconnect,
             Item::UiSoundReserve => e.ui_sound_reserve,
@@ -830,6 +852,7 @@ impl Item {
             Item::Fullbright => e.fullbright = !e.fullbright,
             Item::DynamicLights => e.dynamic_lights = !e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag = !e.own_name_tag,
+            Item::BottomScreen => e.bottom_screen = !e.bottom_screen,
             Item::HideBlockParticles => e.hide_block_particles = !e.hide_block_particles,
             Item::AutoReconnect => e.auto_reconnect = !e.auto_reconnect,
             Item::UiSoundReserve => e.ui_sound_reserve = !e.ui_sound_reserve,

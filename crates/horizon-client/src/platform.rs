@@ -7,6 +7,8 @@
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub mod second_screen;
+
 /// The host app went to the background ([`sent_to_background`]) since the game last looked.
 static BACKGROUND: AtomicBool = AtomicBool::new(false);
 

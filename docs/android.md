@@ -2,8 +2,9 @@
 
 Horizon builds for Android (arm64) as an APK. The game runs full screen with a controller: a
 handheld's built-in controls (tested target: the AYANEO Pocket DS), or any Bluetooth or USB pad.
-Touch works as the mouse in menus. In-world touch controls, content mods and Microsoft sign-in on
-the device are not done yet; native mods can be built in ([Native mods](#native-mods)). Worlds are
+Touch works as the mouse in menus. A second screen (the Pocket DS's bottom one) shows the hotbar,
+the status bars and the minimap. In-world touch controls, content mods and Microsoft sign-in on the
+device are not done yet; native mods can be built in ([Native mods](#native-mods)). Worlds are
 offline singleplayer and LAN, under an offline player name.
 
 ## What's where
@@ -14,7 +15,8 @@ offline singleplayer and LAN, under an offline player name.
 | Arguments and event loop handed in by the host app | `crates/horizon-client/src/platform.rs` |
 | The pad the host app fills in (no gilrs on Android) | `crates/horizon-client-input/src/gamepad/host.rs` |
 | Surface dropped and remade on `Suspended`/`Resumed` | `Renderer::drop_surface`/`resume_surface` (`horizon-client-render/src/gfx.rs`), the `suspended` handlers in `game/` |
-| The app: GameActivity subclass, manifest, Gradle | `packaging/android` |
+| The second screen: surface and touches handed in, the panel drawn on it | `platform/second_screen.rs`, `game/bottom_panel.rs` (horizon-client), `gfx/second_screen.rs` (horizon-client-render), `bottom.rs` (horizon-android) |
+| The app: launcher, GameActivity subclass, bottom-screen activity, manifest, Gradle | `packaging/android` |
 | Pushing resources from a PC | `tools/android_push_resources.ps1` |
 | Native mods applied for the Android build | `tools/android_native_mods.py` |
 
@@ -129,6 +131,34 @@ works around:
   of the window's surface when the window goes and makes a new one on return.
 - The activity handles every configuration change itself, because winit's event loop can't be
   made twice in a process. When the game quits, the process ends with it.
+
+## The second screen
+
+On a device with a second display (the AYANEO Pocket DS's 1024x768 bottom screen), the game runs on
+the main screen and the second one shows a panel in a world: the hotbar (tap a slot to select
+it), the experience bar, hearts, armour, food and air, the coordinates, and the minimap when the
+Minimap mod is built in ([Native mods](#native-mods)). While the panel shows, the main screen's HUD
+leaves those widgets out. Options → Horizon Settings → Extras… → Second Screen →
+**Bottom screen** turns it off. The panel is also off on the title screen, where the second screen
+keeps the system's own launcher. The panel is vanilla's HUD upside down: the hotbar along
+the top, then the experience bar, hearts and food, armour and air, and the coordinates at the
+bottom left. The minimap is at the bottom right, 128 GUI pixels across, one per pixel of its image.
+It keeps the mod's zoom, shape, turning and outline settings (Options → Mods → Minimap); the
+mod's corner and size are for the main screen.
+
+How it fits together:
+- `LaunchActivity` is the launcher icon. It starts `HorizonActivity` on the main display, so the
+  game goes on the top screen even when the icon is tapped on the bottom one.
+- `HorizonActivity` asks the game twice a second whether it wants the second screen
+  (`second_screen::wanted`). If it does, it starts `BottomActivity` on that display; if not, it
+  closes it.
+- `BottomActivity` is an activity, not a `Presentation`. The Pocket DS keeps a full-screen
+  overlay of its own (`com.ayaneo.gamewindow`) over the bottom screen unless an app runs there.
+  Its window never takes input focus, and once it's up it gives focus back to the game, so the
+  controller keeps working.
+- Its surface reaches the renderer as a second wgpu surface on the same device, with a HUD
+  renderer of its own over the shared atlas. The game draws the panel at most 30 times a second,
+  after each frame.
 
 ## Debugging
 

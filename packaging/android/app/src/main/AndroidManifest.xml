@@ -22,20 +22,40 @@
         android:allowBackup="false"
         android:theme="@style/Theme.Horizon">
 
-        <!-- Every configuration change is the game's to handle: winit's event loop can't
-             be made twice, so the activity must never be recreated. -->
+        <!-- The icon: starts the game on the main screen, wherever it was tapped (a handheld's
+             second screen has a launcher of its own). -->
         <activity
-            android:name=".HorizonActivity"
+            android:name=".LaunchActivity"
             android:exported="true"
-            android:launchMode="singleTask"
-            android:screenOrientation="sensorLandscape"
-            android:resizeableActivity="false"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation|uiMode|fontScale|layoutDirection|locale|touchscreen|colorMode">
-            <meta-data android:name="android.app.lib_name" android:value="horizon_android" />
+            android:taskAffinity="dev.playhorizon.android.launch"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Every configuration change is the game's to handle: winit's event loop can't
+             be made twice, so the activity must never be recreated. -->
+        <activity
+            android:name=".HorizonActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation|uiMode|fontScale|layoutDirection|locale|touchscreen|colorMode">
+            <meta-data android:name="android.app.lib_name" android:value="horizon_android" />
+        </activity>
+
+        <!-- The game's panel on the second screen, in a task of its own there. -->
+        <activity
+            android:name=".BottomActivity"
+            android:exported="false"
+            android:taskAffinity="dev.playhorizon.android.bottom"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation|uiMode|fontScale|layoutDirection|locale|touchscreen|colorMode" />
     </application>
 </manifest>

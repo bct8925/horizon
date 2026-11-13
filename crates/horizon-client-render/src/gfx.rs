@@ -211,6 +211,7 @@ mod hdr_start;
 mod hdr_stats;
 pub(crate) mod hud_coverage;
 mod in_flight;
+pub mod second_screen;
 pub use hdr::{Calibration as HdrCalibration, Output as HdrOutput};
 mod hold;
 pub use hold::WorldHold;
@@ -1488,6 +1489,11 @@ pub struct Renderer {
     /// Lava's sprite layers, which a pack's solid terrain draws (`pack_atlas::game_terrain`).
     pack_lava_layers: Vec<u16>,
     pub hud: HudRenderer,
+    /// The item and armour glints' textures and their sampler, for a second HUD
+    /// (`second_screen`).
+    hud_glint: (wgpu::TextureView, wgpu::TextureView, wgpu::Sampler),
+    /// A second screen beside the window, with its own HUD (`second_screen`).
+    second_screen: Option<second_screen::SecondScreen>,
     /// Vanilla's menu background blur, made on first use.
     menu_blur: Option<crate::menu_blur::MenuBlur>,
     /// `post_effect` chains, made on first use.
@@ -5084,6 +5090,12 @@ impl Renderer {
             shadow_translucent_scratch: Vec::new(),
             pack_lava_layers: Vec::new(),
             hud,
+            hud_glint: (
+                glint_view.clone(),
+                glint_armor_view.clone(),
+                glint_sampler.clone(),
+            ),
+            second_screen: None,
             menu_blur: None,
             post_effects: None,
             readback: readback::Readback::default(),

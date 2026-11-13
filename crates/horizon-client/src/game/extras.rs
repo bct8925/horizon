@@ -185,30 +185,16 @@ impl Game<'_> {
         self.zoom_now().2
     }
     /// The minimap and mods' corner panels, in the HUD layer (hidden with F1
-    /// by the caller). The top left corner gives way to the debug screen.
+    /// by the caller). The top left corner gives way to the debug screen, and the minimap to
+    /// the second screen's panel, which shows it instead (`bottom_panel.rs`).
     pub(super) fn draw_extras(&mut self, batch: &mut HudBatch) {
-        let map = self.minimap_shown();
+        let map = self.minimap_look().filter(|_| !self.bottom_panel.shown());
         let visible = |corner| !(self.debug && corner == Corner::TopLeft);
         let mut corners = Corners::new(batch.width, batch.height, self.effect_rows_height());
-        let atlas = &self.gui.atlas;
-        if let Some((map_corner, map_size, view)) = map
-            && visible(map_corner)
-            && !self.extras.minimap.image.is_empty()
-            && let Some(image) = atlas.sprites.get(MINIMAP_SPRITE).copied()
+        if let Some(look) = map
+            && visible(look.corner)
         {
-            let (arrow, north) = if view.rotate {
-                (0.0, Some(view.north()))
-            } else {
-                (180.0 + view.yaw, None)
-            };
-            let look = extras_hud::MinimapLook {
-                corner: map_corner,
-                size: map_size,
-                image,
-                arrow,
-                north,
-            };
-            extras_hud::draw_minimap(batch, atlas, &mut corners, &look);
+            extras_hud::draw_minimap(batch, &self.gui.atlas, &mut corners, &look);
         }
         self.draw_pvp_hud(batch, &mut corners);
         self.native_hud(batch, &mut corners);
@@ -218,6 +204,26 @@ impl Game<'_> {
             let shown = Corner::ALL.map(|corner| self.native_corner_shown(corner));
             extras_hud::draw_layers(layers, batch, &self.gui.atlas, &mut corners, shown);
         }
+    }
+    /// The minimap a mod shows, in the mod's corner and size, once its image is made.
+    pub(super) fn minimap_look(&self) -> Option<extras_hud::MinimapLook> {
+        let (corner, size, view) = self.minimap_shown()?;
+        if self.extras.minimap.image.is_empty() {
+            return None;
+        }
+        let image = self.gui.atlas.sprites.get(MINIMAP_SPRITE).copied()?;
+        let (arrow, north) = if view.rotate {
+            (0.0, Some(view.north()))
+        } else {
+            (180.0 + view.yaw, None)
+        };
+        Some(extras_hud::MinimapLook {
+            corner,
+            size,
+            image,
+            arrow,
+            north,
+        })
     }
     /// The height the status effect icons take at the top right
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).

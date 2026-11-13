@@ -237,6 +237,7 @@ impl Game<'_> {
         if horizon_client::platform::take_sent_to_background() {
             self.save_for_background();
         }
+        self.poll_bottom_panel();
         self.pause_if_inactive();
         if let Some(limit) = self.options.time_limit()
             && self.started.elapsed() > limit

@@ -1,10 +1,15 @@
 package dev.playhorizon.android;
 
+import android.app.ActivityOptions;
+import android.content.Intent;
+import android.hardware.display.DisplayManager;
 import android.hardware.input.InputManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.view.Display;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -22,14 +27,22 @@ import com.google.androidgamesdk.GameActivity;
  * this activity takes every controller event first and gives the game the whole pad
  * (horizon-android's pad.rs, gamepad::host): the AYANEO Pocket DS's built-in controls or any
  * other controller. Touch and keyboard events go on to the game through GameActivity.
+ *
+ * A second screen (the Pocket DS's bottom one) gets the game's bottom panel (BottomActivity)
+ * while the game asks for it.
  */
 public class HorizonActivity extends GameActivity
-        implements InputManager.InputDeviceListener {
+        implements InputManager.InputDeviceListener, DisplayManager.DisplayListener {
     // Button::ALL's order (crates/horizon-client-input/src/gamepad.rs).
     private static final int SOUTH = 0, EAST = 1, WEST = 2, NORTH = 3;
     private static final int LEFT_BUMPER = 4, RIGHT_BUMPER = 5, LEFT_TRIGGER = 6, RIGHT_TRIGGER = 7;
     private static final int SELECT = 8, START = 9, LEFT_STICK = 10, RIGHT_STICK = 11;
     private static final int DPAD_UP = 12, DPAD_DOWN = 13, DPAD_LEFT = 14, DPAD_RIGHT = 15;
+
+    /** How often the activity asks the game whether it wants the second screen. */
+    private static final long BOTTOM_CHECK_MS = 500;
+    /** How long a panel just launched has to come up before it is launched again. */
+    private static final long BOTTOM_LAUNCH_MS = 3000;
 
     /** How long a Back press holds Start, so the game sees it in a frame. */
     private static final long BACK_HOLD_MS = 80;
@@ -42,6 +55,25 @@ public class HorizonActivity extends GameActivity
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private InputManager inputManager;
+    private DisplayManager displayManager;
+    private boolean started;
+    /** When the panel was last launched (`SystemClock.uptimeMillis`), or 0. */
+    private long bottomLaunched;
+    /** The bottom panel follows what the game wants while the activity is started. */
+    private final Runnable checkBottom = new Runnable() {
+        @Override
+        public void run() {
+            if (!started) {
+                return;
+            }
+            if (BottomActivity.nativeWanted()) {
+                showBottom();
+            } else {
+                hideBottom();
+            }
+            handler.postDelayed(this, BOTTOM_CHECK_MS);
+        }
+    };
     /** The hat's last direction, -1, 0 or 1 on each axis: the D-pad as buttons. */
     private int hatX, hatY;
 
@@ -51,11 +83,24 @@ public class HorizonActivity extends GameActivity
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);
         inputManager.registerInputDeviceListener(this, handler);
+        displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
+        displayManager.registerDisplayListener(this, handler);
         hideSystemBars();
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        started = true;
+        handler.removeCallbacks(checkBottom);
+        handler.post(checkBottom);
+    }
+
+    @Override
     protected void onStop() {
+        started = false;
+        handler.removeCallbacks(checkBottom);
+        hideBottom();
         // Android may end a stopped app without another word, and the window (whose loss is
         // the game's own cue) may outlive this.
         nativeStopped();
@@ -65,7 +110,68 @@ public class HorizonActivity extends GameActivity
     @Override
     protected void onDestroy() {
         inputManager.unregisterInputDeviceListener(this);
+        displayManager.unregisterDisplayListener(this);
         super.onDestroy();
+    }
+
+    /** The screen the panel goes on: a presentation display other than the game's. */
+    private Display bottomDisplay() {
+        int own = getWindowManager().getDefaultDisplay().getDisplayId();
+        for (Display display : displayManager.getDisplays(
+                DisplayManager.DISPLAY_CATEGORY_PRESENTATION)) {
+            if (display.getDisplayId() != own) {
+                return display;
+            }
+        }
+        return null;
+    }
+
+    /** The bottom panel on the second screen, when there is one and it isn't up yet. */
+    private void showBottom() {
+        if (!started || BottomActivity.current() != null
+                || (bottomLaunched != 0
+                        && SystemClock.uptimeMillis() - bottomLaunched < BOTTOM_LAUNCH_MS)) {
+            return;
+        }
+        Display display = bottomDisplay();
+        if (display == null) {
+            return;
+        }
+        Intent panel = new Intent(this, BottomActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                        | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        ActivityOptions options = ActivityOptions.makeBasic();
+        options.setLaunchDisplayId(display.getDisplayId());
+        bottomLaunched = SystemClock.uptimeMillis();
+        try {
+            startActivity(panel, options.toBundle());
+        } catch (RuntimeException e) {
+            // The display went away, or the system won't put an activity on it.
+            bottomLaunched = 0;
+        }
+    }
+
+    private void hideBottom() {
+        bottomLaunched = 0;
+        BottomActivity shown = BottomActivity.current();
+        if (shown != null) {
+            shown.finish();
+        }
+    }
+
+    @Override
+    public void onDisplayAdded(int displayId) {}
+
+    @Override
+    public void onDisplayChanged(int displayId) {}
+
+    @Override
+    public void onDisplayRemoved(int displayId) {
+        BottomActivity shown = BottomActivity.current();
+        if (shown != null && shown.getDisplay() != null
+                && shown.getDisplay().getDisplayId() == displayId) {
+            hideBottom();
+        }
     }
 
     @Override

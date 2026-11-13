@@ -25,6 +25,9 @@ log = "0.4"
 libc = "0.2"
 # Finishing the activity as the game exits (app.rs `finish_on_exit`).
 jni = "0.21"
+# The bottom screen's surface (bottom.rs): ANativeWindow from the Java Surface, as wgpu takes it.
+ndk = "0.9"
+raw-window-handle = "0.6"
 
 [lints]
 workspace = true
