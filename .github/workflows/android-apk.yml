@@ -52,7 +52,7 @@ jobs:
 
       - name: Build
         working-directory: packaging/android
-        run: call gradlew.bat assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
+        run: call .\gradlew.bat assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
 
       - name: Keep a copy
         shell: powershell
