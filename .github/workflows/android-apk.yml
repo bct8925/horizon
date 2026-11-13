@@ -27,8 +27,9 @@ jobs:
     timeout-minutes: 120
     defaults:
       run:
-        # Git's bash: started at logon, the runner may find WSL's `bash` or none.
-        shell: '"C:/Program Files/Git/bin/bash.exe" --noprofile --norc -eo pipefail {0}'
+        # cmd and Windows PowerShell are always there, wherever the runner was started from;
+        # cmd runs the tools whose progress goes to stderr, which PowerShell 5.1 takes as errors.
+        shell: cmd
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,29 +38,31 @@ jobs:
           clean: false
 
       - name: Tools
+        shell: powershell
         run: |
-          echo "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$LOCALAPPDATA\Android\Sdk" >> "$GITHUB_ENV"
+          Add-Content -Path $env:GITHUB_ENV -Encoding ascii -Value "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr"
+          Add-Content -Path $env:GITHUB_ENV -Encoding ascii -Value "ANDROID_HOME=$env:LOCALAPPDATA\Android\Sdk"
 
       - name: Minimap mod
-        run: |
-          if [ -d .local/android/horizon-mods/.git ]; then
-            git -C .local/android/horizon-mods pull --ff-only
+        run: >-
+          if exist .local\android\horizon-mods\.git
+          (git -C .local/android/horizon-mods pull --ff-only)
           else
-            git clone --depth 1 https://github.com/horizon-rust/horizon-mods .local/android/horizon-mods
-          fi
+          (git clone --depth 1 https://github.com/horizon-rust/horizon-mods .local/android/horizon-mods)
 
       - name: Build
         working-directory: packaging/android
-        run: ./gradlew assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
+        run: call gradlew.bat assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
 
       - name: Keep a copy
+        shell: powershell
         run: |
-          out="$USERPROFILE/Horizon APKs"
-          mkdir -p "$out"
-          apk=packaging/android/app/build/outputs/apk/release/app-release.apk
-          cp "$apk" "$out/horizon-${GITHUB_REF_NAME}-${GITHUB_SHA::9}.apk"
-          cp "$apk" "$out/horizon-${GITHUB_REF_NAME}-latest.apk"
+          $out = Join-Path $env:USERPROFILE "Horizon APKs"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $apk = "packaging/android/app/build/outputs/apk/release/app-release.apk"
+          $sha = $env:GITHUB_SHA.Substring(0, 9)
+          Copy-Item $apk (Join-Path $out "horizon-$($env:GITHUB_REF_NAME)-$sha.apk")
+          Copy-Item $apk (Join-Path $out "horizon-$($env:GITHUB_REF_NAME)-latest.apk")
 
       - uses: actions/upload-artifact@v4
         with:
