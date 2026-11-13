@@ -3,11 +3,13 @@
 # `gh workflow run android-apk.yml --ref <branch>` once the file is on the default branch).
 # The APK is the run's artifact.
 #
-# It builds on bct8925's PC (a self-hosted runner labelled `horizon-android`), whose build
-# folders stay warm between runs, and also leaves the APK in `%USERPROFILE%\Horizon APKs`.
-# With the repository variable APK_RUNNER set to `cloud`, it builds on GitHub's runner instead,
-# signed with the key in the ANDROID_DEBUG_KEYSTORE secret (a debug keystore, base64), so it
-# installs over the PC's builds, which its own debug key signs.
+# `android-ayaneo-pocket`, the build that gets installed, builds on bct8925's PC (a self-hosted
+# runner labelled `horizon-android`), whose build folders stay warm between runs, one per branch
+# (HORIZON_ANDROID_DIR); it also leaves the APK in `%USERPROFILE%\Horizon APKs`.
+# `android`, the base without the second screen, builds on GitHub's runner, which only shows
+# that it still builds and keeps the PC free; so does every branch when the repository variable
+# APK_RUNNER is `cloud`. GitHub's runner signs with the key in the ANDROID_DEBUG_KEYSTORE secret
+# (a debug keystore, base64), so its APKs install over the PC's, which the same key signs.
 name: Android APK
 
 on:
@@ -22,9 +24,17 @@ concurrency:
 jobs:
   pc:
     # Only in the fork: upstream builds no APK.
-    if: github.repository == 'bct8925/horizon' && vars.APK_RUNNER != 'cloud'
+    if: >-
+      github.repository == 'bct8925/horizon' && vars.APK_RUNNER != 'cloud'
+      && github.ref_name == 'android-ayaneo-pocket'
     runs-on: [self-hosted, horizon-android]
     timeout-minutes: 120
+    env:
+      # A work folder per branch (tools/android_native_mods.py): building another branch leaves
+      # this one's build warm. android-ayaneo-pocket keeps the first one, .local/android.
+      HORIZON_ANDROID_DIR: >-
+        ${{ github.ref_name == 'android-ayaneo-pocket' && '.local/android'
+        || format('.local/android-{0}', github.ref_name) }}
     defaults:
       run:
         # cmd and Windows PowerShell are always there, wherever the runner was started from;
@@ -72,7 +82,9 @@ jobs:
           retention-days: 30
 
   cloud:
-    if: github.repository == 'bct8925/horizon' && vars.APK_RUNNER == 'cloud'
+    if: >-
+      github.repository == 'bct8925/horizon' && (vars.APK_RUNNER == 'cloud'
+      || github.ref_name != 'android-ayaneo-pocket')
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:

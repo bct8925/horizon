@@ -56,7 +56,9 @@ val workspace = rootDir.resolve("../..").canonicalFile
 // target folder, .local/android/target).
 val nativeMods = (findProperty("nativeMods") as String?)
     ?.split(';')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
-val androidWork = workspace.resolve(".local/android")
+// HORIZON_ANDROID_DIR (absolute or from the repository root): another work folder for the stage
+// and its build, as tools/android_native_mods.py takes it, so each branch keeps its own warm.
+val androidWork = workspace.resolve(System.getenv("HORIZON_ANDROID_DIR") ?: ".local/android")
 val stageNativeMods = tasks.register<Exec>("stageNativeMods") {
     group = "build"
     description = "Applies native mods on a copy of Horizon's source"

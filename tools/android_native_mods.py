@@ -5,7 +5,8 @@ The launcher builds a player's native mods into the game on the PC; the Android 
 launcher, so this does the same for it: it copies this checkout's source (tracked and new files,
 not ignored ones) to `.local/android/source`, applies the mods there with horizon-mixins (the
 commit the mods pin, built once into `.local/android/tools`), and leaves the result in
-`.local/android/stage`, where Gradle's `cargoNdk` builds it. Only files that changed are
+`.local/android/stage`, where Gradle's `cargoNdk` builds it. `HORIZON_ANDROID_DIR` puts the copy,
+the stage and the build folder elsewhere (one per branch, say). Only files that changed are
 replaced in the stage, so cargo rebuilds only what changed. The checkout itself is never edited.
 
 Each argument is a native mod's folder as horizon-rust/horizon-mods has it (`native/minimap`):
@@ -23,7 +24,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WORK = ROOT / ".local" / "android"
+# HORIZON_ANDROID_DIR (absolute or from the repository root) gives a build its own work folder, so
+# builds of different branches each keep theirs warm; horizon-mixins stays shared.
+WORK = ROOT / os.environ.get("HORIZON_ANDROID_DIR", str(Path(".local") / "android"))
+TOOLS = ROOT / ".local" / "android" / "tools"
 SOURCE = WORK / "source"
 BUNDLES = WORK / "mods"
 STAGE = WORK / "stage"
@@ -50,7 +54,7 @@ def tool(mods):
     if len(revs) != 1:
         sys.exit(f"the mods pin different horizon-mixins commits: {sorted(revs)}")
     rev = revs.pop()
-    root = WORK / "tools" / "horizon-mixins" / rev
+    root = TOOLS / "horizon-mixins" / rev
     binary = root / "bin" / f"horizon-mixins{EXE}"
     if not binary.is_file():
         print(f"Building horizon-mixins {rev[:7]}", flush=True)
