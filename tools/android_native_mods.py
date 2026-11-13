@@ -35,6 +35,22 @@ FRESH = WORK / "stage.new"
 EXE = ".exe" if os.name == "nt" else ""
 # Cargo's outputs, if a build ever ran inside the stage: kept, never compared.
 KEEP = {"target"}
+# horizon-mixins' record of what it applied (horizon_mod_api_gen::MIXINS_STAGE). The game's build
+# script watches it, but reads only the mods it names; its `inputs`, a hash of every file of the
+# copy, docs included, change with any commit, and rewriting it for them alone would recompile
+# the whole game.
+MARKER = ".horizon-mixins-stage.json"
+
+
+def same_record(fresh, kept):
+    """Whether two records name the same mods' injections and modules, whatever their inputs."""
+    try:
+        a, b = (json.loads(path.read_text(encoding="utf-8")) for path in (fresh, kept))
+    except (OSError, ValueError):
+        return False
+    a.pop("inputs", None)
+    b.pop("inputs", None)
+    return a == b
 
 
 class NativeMod:
@@ -108,6 +124,8 @@ def sync(fresh, out):
         if entry.is_dir():
             sync(entry, target)
         elif not target.is_file() or not filecmp.cmp(entry, target, shallow=False):
+            if entry.name == MARKER and target.is_file() and same_record(entry, target):
+                continue
             shutil.copy2(entry, target)
 
 

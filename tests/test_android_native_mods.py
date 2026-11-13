@@ -1,5 +1,6 @@
 """tools/android_native_mods.py: the stage keeps what didn't change, so cargo rebuilds only what did."""
 import importlib.util
+import json
 import os
 import tempfile
 import unittest
@@ -44,6 +45,21 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.stage / "old").exists())
         # Untouched: cargo sees the same file it built.
         self.assertEqual((self.stage / "src" / "same.rs").stat().st_mtime, 1_000_000)
+
+    def test_the_mixins_record_is_kept_when_only_its_inputs_changed(self):
+        record = {"schema": 6, "injections": [{"mod_id": "minimap"}], "modules": []}
+        write(self.fresh / mods.MARKER, json.dumps({**record, "inputs": {"docs/a.md": "new"}}))
+        write(self.stage / mods.MARKER, json.dumps({**record, "inputs": {"docs/a.md": "old"}}))
+        os.utime(self.stage / mods.MARKER, (1_000_000, 1_000_000))
+        mods.sync(self.fresh, self.stage)
+        # Untouched: the game's build script, which watches it, doesn't run again.
+        self.assertEqual((self.stage / mods.MARKER).stat().st_mtime, 1_000_000)
+
+    def test_the_mixins_record_is_replaced_when_the_mods_changed(self):
+        write(self.fresh / mods.MARKER, json.dumps({"injections": [{"mod_id": "zoom"}], "inputs": {}}))
+        write(self.stage / mods.MARKER, json.dumps({"injections": [{"mod_id": "minimap"}], "inputs": {}}))
+        mods.sync(self.fresh, self.stage)
+        self.assertIn("zoom", (self.stage / mods.MARKER).read_text())
 
     def test_a_build_folder_in_the_stage_stays(self):
         write(self.fresh / "Cargo.toml", "[workspace]")
