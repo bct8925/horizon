@@ -193,8 +193,9 @@ pub(in crate::game) enum PadEvent {
     Back(PadId),
 }
 
-/// A build without the `controllers` feature (the server build, which must not need libudev): no
-/// hardware pads, only `horizon-ctl pad`'s virtual one.
+/// A build without the `controllers` feature (the server build, which must not need libudev; the
+/// Android build, where gilrs has no backend): no gilrs pads, only the one the host app hands over
+/// (`gamepad::host`: Android's built-in controls) and `horizon-ctl pad`'s virtual one.
 #[cfg(not(feature = "controllers"))]
 mod hardware {
     use super::{super::Game, Pads};
@@ -203,7 +204,7 @@ mod hardware {
 
     impl Pads {
         pub(super) fn read(&mut self) -> PadState {
-            PadState::default()
+            horizon_client::gamepad::host::state().unwrap_or_default()
         }
         pub(in crate::game) fn release_hardware(&mut self) {}
     }
@@ -253,7 +254,11 @@ mod hardware {
         pub(in crate::game) fn pad_close_output(&mut self) {}
         pub(super) fn pad_vibrate(&mut self, _: Rumble, _: Pulse) {}
         pub(super) fn pad_devices_status(&self) -> Value {
-            json!({ "backend": false, "controllers": [] })
+            json!({
+                "backend": false,
+                "host_pad": horizon_client::gamepad::host::state().is_some(),
+                "controllers": [],
+            })
         }
     }
 }

@@ -10,6 +10,9 @@ import sys
 PRIVATE_ROOTS = {".local", "decompiled", "minecraft", "assets", "run", "logs"}
 PRIVATE_EXTENSIONS = {".jar", ".class", ".jfr", ".hprof", ".java"}
 ORIGINAL_JDK_TOOLS = {"tools/JfrSummary.java", "tests/java/JfrFixture.java"}
+# The Android app (docs/android.md): its own activities, and Gradle's wrapper, which `gradlew` runs.
+ANDROID_APP_SOURCES = "packaging/android/app/src/main/java/dev/playhorizon/android/"
+ANDROID_GRADLE_WRAPPER = "packaging/android/gradle/wrapper/gradle-wrapper.jar"
 # The prepared folder's files in one file (crates/horizon-core/src/prepared_files.rs): Mojang's data.
 PRIVATE_NAMES = {"horizon-data.bin"}
 # Vanilla's 1.13 data fixer tables, copied from its code until 2026-11; horizon-prepare now exports them from the
@@ -25,7 +28,9 @@ TABLE_ENTRIES = 50
 def prohibited(path):
     parsed = PurePosixPath(path)
     # Original JDK-only tools are an exact allowlist; recovered game Java stays private.
-    if path in ORIGINAL_JDK_TOOLS:
+    if path in ORIGINAL_JDK_TOOLS or path == ANDROID_GRADLE_WRAPPER:
+        return False
+    if parsed.suffix == ".java" and path.startswith(ANDROID_APP_SOURCES):
         return False
     # Original Horizon mod sources may also be tracked.
     if parsed.suffix == ".java" and path.startswith(("mods/horizon/src/", "mods/horizon-lab/src/")):

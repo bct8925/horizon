@@ -1,0 +1,30 @@
+[package]
+name = "horizon-android"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Horizon on Android: the GameActivity's entry point, its folders and the controller bridge"
+publish = false
+
+# The activity loads libhorizon_android.so (packaging/android). Built with cargo-ndk:
+# `cargo ndk -t arm64-v8a -P 26 build -p horizon-android --release` (docs/android.md).
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+# Only Android: on the desktop this crate is empty, so `cargo build --workspace` builds no
+# second client with other features.
+[target.'cfg(target_os = "android")'.dependencies]
+# gilrs and the DualSense's HID have no Android backend (`controllers` off): the activity
+# reads the pad and hands it over (`gamepad::host`). Mods (wasmtime) stay off for now.
+horizon-client = { path = "../horizon-client", default-features = false, features = ["audio", "horizon-extras"] }
+horizon-threads = { path = "../horizon-threads" }
+horizon-mods = { path = "../horizon-mods", default-features = false, features = ["index"] }
+log = "0.4"
+libc = "0.2"
+# Finishing the activity as the game exits (app.rs `finish_on_exit`).
+jni = "0.21"
+
+[lints]
+workspace = true

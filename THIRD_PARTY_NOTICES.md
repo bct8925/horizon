@@ -100,6 +100,16 @@ bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under
 change: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
 x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264).
 
+## android-activity
+
+`third_party/android-activity` is [android-activity](https://github.com/rust-mobile/android-activity)
+0.6.1 by the Rust Mobile developers, with the GameActivity C glue from Google's
+[Android Games SDK](https://android.googlesource.com/platform/frameworks/opt/gamesdk) it bundles,
+licensed under MIT or Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE` in that folder; the glue under
+Apache-2.0). One change: `android_app_create` in
+`android-games-sdk/game-activity/prefab-src/modules/game-activity/src/game-activity/native_app_glue/android_native_app_glue.c`
+gives the `android_main` thread 8 MB of stack.
+
 ## Pixelify Sans
 
 `crates/horizon-theme/fonts/PixelifySans-*.ttf` is [Pixelify Sans](https://github.com/eifetx/Pixelify-Sans)

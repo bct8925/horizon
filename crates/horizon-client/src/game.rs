@@ -622,7 +622,7 @@ use winit::{
     application::ApplicationHandler,
     error::EventLoopError,
     event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow},
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window, WindowId},
 };
@@ -2958,6 +2958,8 @@ struct Game<'a> {
     /// PauseScreen.showPauseMenu (false after F3+Escape).
     pause_menu: bool,
     pause_focus: Option<u8>,
+    /// The finger a touchscreen's menus follow as the mouse (`touch_as_mouse`), while it is down.
+    touch_finger: Option<u64>,
     death_focus: Option<u8>,
     /// The screen ([`Game::key_screen`]) the menu focus belongs to. Another
     /// screen in front drops it, as `Gui.setScreen` drops the focus of the
@@ -11846,6 +11848,7 @@ impl<'a> Game<'a> {
             spawn_counts: HashMap::new(),
             pause_menu: true,
             pause_focus: None,
+            touch_finger: None,
             death_focus: None,
             focus_screen: 0,
             previous_mode: None,

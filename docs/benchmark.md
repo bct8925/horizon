@@ -40,7 +40,7 @@ The game runs the Horizon half of this benchmark by itself, with nothing else in
 horizon-client --benchmark standard --render-distance 16
 ```
 
-It starts at the title screen, creates the world `horizon-benchmark` (seed 1234, creative; the next run replaces it, and it never touches a world it didn't create), flies the four scenes as above, writes a report to `benchmarks/` in the game folder and quits. `--benchmark village` (or `forest`, `ocean`, `mountain`) flies one scene. For the run only, VSync is off, the frame rate unlimited and the game doesn't pause or slow down without focus; your options are not changed. Your other settings (render distance unless given, graphics, window size) are used as they are, and stored in the report, so compare reports with the same conditions.
+It starts at the title screen, creates the world `horizon-benchmark` (seed 1234, creative; the next run replaces it, and it never touches a world it didn't create), flies the four scenes as above, writes a report to `benchmarks/` in the game folder (or to the folder `HORIZON_BENCHMARK_DIR` names) and quits. `--benchmark village` (or `forest`, `ocean`, `mountain`) flies one scene. For the run only, VSync is off, the frame rate unlimited and the game doesn't pause or slow down without focus; your options are not changed. Your other settings (render distance unless given, graphics, window size) are used as they are, and stored in the report, so compare reports with the same conditions.
 
 ### A fixed trip
 

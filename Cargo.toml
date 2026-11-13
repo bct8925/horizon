@@ -1,5 +1,5 @@
 [workspace]
-exclude = ["launcher", "crates/horizon-telemetry-server", "crates/horizon-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys"]
+exclude = ["launcher", "crates/horizon-telemetry-server", "crates/horizon-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "third_party/android-activity"]
 members = [
     "crates/horizon-addresses",
     "crates/horizon-core",
@@ -13,6 +13,8 @@ members = [
     "crates/horizon-client-core",
     "crates/horizon-client-input",
     "crates/horizon-client-render",
+    # Horizon on Android: the activity's entry point (empty elsewhere; docs/android.md).
+    "crates/horizon-android",
     "crates/horizon-cosmetics",
     "crates/horizon-command",
     "crates/horizon-items",
@@ -88,6 +90,10 @@ naga = { path = "third_party/naga" }
 # game died before main on CPUs without it (Core 2, #7264; THIRD_PARTY_NOTICES.md). Drop this and
 # the folder once a libmimalloc-sys release has microsoft/mimalloc#1291's fix.
 libmimalloc-sys = { path = "third_party/libmimalloc-sys" }
+# android-activity 0.6.1 whose GameActivity glue starts `android_main` with 8 MB of stack, as a
+# desktop game's main thread has, instead of bionic's ~1 MB (docs/android.md). Only the Android
+# build uses it. Drop this and the folder if a release lets the app choose the stack size.
+android-activity = { path = "third_party/android-activity" }
 
 # Line tables keep file:line in backtraces; full debug info made every
 # example and test binary hundreds of megabytes and slow to link.

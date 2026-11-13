@@ -338,9 +338,11 @@ fn run(control: &Control, setup: Setup) -> Result<PathBuf, String> {
         report.metric("game.binary_bytes", &[meta.len() as f64]);
     }
     crate::telemetry::keep_benchmark(&crate::logging::game_home(), &report);
-    let written = report
-        .write_to(&setup.game_dir.join("benchmarks"))
-        .map_err(|e| e.to_string())?;
+    // `HORIZON_BENCHMARK_DIR`: elsewhere than the game folder, as on Android, whose game folder
+    // only the app can read.
+    let folder = std::env::var_os("HORIZON_BENCHMARK_DIR")
+        .map_or_else(|| setup.game_dir.join("benchmarks"), PathBuf::from);
+    let written = report.write_to(&folder).map_err(|e| e.to_string())?;
     if setup.profile {
         match control.call(&stop_capture(&written)) {
             Ok(done) => println!("Horizon: benchmark capture {}", text(&done["path"])),

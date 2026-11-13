@@ -107,8 +107,6 @@ dependencies = [
 [[package]]
 name = "android-activity"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f2a1bb052857d5dd49572219344a7332b31b76405648eabac5bc68978251bcd"
 dependencies = [
  "android-properties",
  "bitflags 2.13.2",
@@ -120,6 +118,7 @@ dependencies = [
  "ndk-context",
  "ndk-sys",
  "num_enum",
+ "simd_cesu8",
  "thiserror 2.0.21",
 ]
 
@@ -1450,6 +1449,18 @@ dependencies = [
 [[package]]
 name = "horizon-addresses"
 version = "0.1.0"
+
+[[package]]
+name = "horizon-android"
+version = "0.1.0"
+dependencies = [
+ "horizon-client",
+ "horizon-mods",
+ "horizon-threads",
+ "jni 0.21.1",
+ "libc",
+ "log",
+]
 
 [[package]]
 name = "horizon-anticheat"

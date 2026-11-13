@@ -37,7 +37,7 @@ pub(super) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<(
         error: None,
     };
     horizon_client::hud::GUI_SCALE.store(settings.gui_scale, Ordering::Relaxed);
-    EventLoop::new()?.run_app(&mut app)?;
+    horizon_client::platform::event_loop()?.run_app(&mut app)?;
     app.error.map_or(Ok(()), Err)
 }
 
@@ -95,7 +95,16 @@ impl Missing {
 
 impl ApplicationHandler for Missing {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Android's `Resumed` after `Suspended`: a new native surface for the window.
+            if let Some(renderer) = &mut self.renderer
+                && let Err(e) = renderer.resume_surface()
+            {
+                self.error = Some(e);
+                event_loop.exit();
+                return;
+            }
+            window.request_redraw();
             return;
         }
         let attributes =
@@ -126,6 +135,12 @@ impl ApplicationHandler for Missing {
                 self.error = Some(e);
                 event_loop.exit();
             }
+        }
+    }
+
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.drop_surface();
         }
     }
 

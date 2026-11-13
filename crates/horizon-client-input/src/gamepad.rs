@@ -13,6 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub mod host;
+
 pub const FILE: &str = "horizon-controller.txt";
 
 /// A button by its position on the pad (gilrs' and SDL's layout): `South`

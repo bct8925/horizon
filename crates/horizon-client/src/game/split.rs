@@ -611,6 +611,12 @@ impl ApplicationHandler for Split<'_> {
         }
     }
 
+    /// Android's `Suspended` (the app in the background): splitscreen's own windows
+    /// are desktop-only, so only the host's game has a surface to let go of.
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        self.host.suspended(event_loop);
+    }
+
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if self.surfaces.is_empty() {
             return self.host.window_event(event_loop, id, event);

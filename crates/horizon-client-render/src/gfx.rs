@@ -1496,6 +1496,9 @@ pub struct Renderer {
     readback: readback::Readback,
     pub info: wgpu::AdapterInfo,
     pub suspended: bool,
+    /// The window has no native surface (Android's `Suspended`: the app is in the
+    /// background): nothing is drawn until `resume_surface` makes a new one.
+    surface_gone: bool,
     /// Consecutive frames whose surface acquisition failed validation. The
     /// first gets the swapchain a fresh configuration; later ones reattach
     /// the window, as a lost surface does.
@@ -5086,6 +5089,7 @@ impl Renderer {
             readback: readback::Readback::default(),
             info,
             suspended: !drawable_size(size.width, size.height, max_side),
+            surface_gone: false,
             acquire_validation_failures: 0,
             surface_unconfigured: false,
             drawn_sections: 0,
@@ -5299,6 +5303,35 @@ impl Renderer {
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             self.surface.take().and_then(|s| Arc::try_unwrap(s).ok());
+    }
+    /// Android's `Suspended`: the window's native surface is about to be destroyed. The
+    /// swapchain goes with it (a spare one too: it belongs to the same native window),
+    /// and frames are skipped until [`Self::resume_surface`].
+    pub fn drop_surface(&mut self) {
+        if self.offscreen.is_some() {
+            return;
+        }
+        self.frame_gen.stop();
+        self.queue.wait();
+        self.surface = None;
+        *self
+            .spare_surface
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        self.surface_gone = true;
+    }
+    /// Android's `Resumed` after [`Self::drop_surface`]: a swapchain on the window's new
+    /// native surface. Nothing to do when the surface was never dropped.
+    pub fn resume_surface(&mut self) -> Result<()> {
+        if !self.surface_gone {
+            return Ok(());
+        }
+        self.surface_gone = false;
+        self.recreate_surface()
+    }
+    /// Whether the window has no native surface to draw to ([`Self::drop_surface`]).
+    pub fn surface_gone(&self) -> bool {
+        self.surface_gone
     }
     /// Reattach a window after surface loss or a failed renderer replacement.
     pub fn recreate_surface(&mut self) -> Result<()> {
@@ -7761,7 +7794,7 @@ impl Renderer {
     /// and halved for each time it ran out of video memory.
     fn screenshot_size(&self) -> Option<[u32; 2]> {
         let request = self.screenshot.as_ref()?;
-        if !request.scaled || request.size.is_some() || self.suspended {
+        if !request.scaled || request.size.is_some() || self.suspended || self.surface_gone {
             return None;
         }
         let window = [self.config.width, self.config.height];
@@ -7878,7 +7911,7 @@ impl Renderer {
                 None => self.arena.has_page(key),
             });
         }
-        if self.suspended {
+        if self.suspended || self.surface_gone {
             return Ok(false);
         }
         let started = Instant::now();

@@ -234,6 +234,9 @@ impl Game<'_> {
         }
         horizon_client::spans::time("pads", || self.poll_pads(event_loop));
         self.settle_after_run(event_loop);
+        if horizon_client::platform::take_sent_to_background() {
+            self.save_for_background();
+        }
         self.pause_if_inactive();
         if let Some(limit) = self.options.time_limit()
             && self.started.elapsed() > limit
@@ -276,9 +279,75 @@ impl Game<'_> {
     }
 }
 
+impl Game<'_> {
+    /// A touchscreen (Android's; winit's `Touch`) in the menus: the first finger down is the
+    /// mouse's left button, pressed where it lands, dragged as it moves and released where
+    /// it lifts, so a tap is a click and a drag moves a slider or a stack. In play the
+    /// screen does nothing yet: the controller plays (touch controls are for later).
+    fn touch_as_mouse(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        id: WindowId,
+        touch: winit::event::Touch,
+    ) {
+        use winit::event::TouchPhase;
+        // In a world with no screen open, a finger has nothing to click; the title screen
+        // leaves `screen` at Playing under it, so that counts as a menu.
+        let in_world = self.title.is_none() && self.screen == Screen::Playing;
+        if self.touch_finger.is_none() && (touch.phase != TouchPhase::Started || in_world) {
+            return;
+        }
+        if self.touch_finger.is_some_and(|finger| finger != touch.id) {
+            return;
+        }
+        let user = input_trace::InputOrigin::User;
+        let device_id = touch.device_id;
+        self.handle_window_event(
+            event_loop,
+            id,
+            WindowEvent::CursorMoved {
+                device_id,
+                position: touch.location,
+            },
+            user,
+        );
+        let state = match touch.phase {
+            TouchPhase::Started => {
+                self.touch_finger = Some(touch.id);
+                ElementState::Pressed
+            }
+            TouchPhase::Moved => return,
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                self.touch_finger = None;
+                ElementState::Released
+            }
+        };
+        self.handle_window_event(
+            event_loop,
+            id,
+            WindowEvent::MouseInput {
+                device_id,
+                state,
+                button: MouseButton::Left,
+            },
+            user,
+        );
+    }
+}
+
 impl ApplicationHandler for Game<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Android's `Resumed` after `Suspended`: the same window on a new native
+            // surface. Elsewhere `resumed` comes once, before there is a window.
+            if let Some(renderer) = &mut self.renderer
+                && let Err(e) = renderer.resume_surface()
+            {
+                self.error = Some(e);
+                event_loop.exit();
+                return;
+            }
+            window.request_redraw();
             return;
         }
         debug_keys::warm_debug_cpu();
@@ -339,6 +408,10 @@ impl ApplicationHandler for Game<'_> {
         self.previous = Instant::now();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if let WindowEvent::Touch(touch) = event {
+            self.touch_as_mouse(event_loop, id, touch);
+            return;
+        }
         let key = if self.window.as_ref().is_some_and(|w| w.id() == id)
             && !self.scripted_run()
             && let WindowEvent::KeyboardInput {
@@ -387,6 +460,16 @@ impl ApplicationHandler for Game<'_> {
             self.last_input = Instant::now();
         }
     }
+    /// Android's `Suspended`: the app went to the background and the window's native
+    /// surface is about to be destroyed. The renderer lets go of it, a world in play
+    /// pauses, and a local world is saved, as the system may end a background app
+    /// without another word.
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.drop_surface();
+        }
+        self.save_for_background();
+    }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.idle(event_loop);
     }
@@ -395,6 +478,34 @@ impl ApplicationHandler for Game<'_> {
     /// window turns it into a window close, so Minecraft.stop saves the world.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.shut_down();
+    }
+}
+
+impl Game<'_> {
+    /// The app went to the background (its window gone, or the host's
+    /// `platform::sent_to_background`), where the system may end the process without warning:
+    /// pause the game and save the world.
+    pub(super) fn save_for_background(&mut self) {
+        if self.title.is_none() && self.player.is_some() {
+            if self.screen == Screen::Playing && !self.options.no_pause {
+                self.pause_focus = None;
+                self.screen = Screen::Paused;
+            }
+            // Single player keeps its world on its server thread: the save is queued there
+            // (without waiting, so the activity's thread isn't held). A server's client has
+            // nothing to save.
+            if let Some(server) = &self.integrated {
+                server.post(|server| {
+                    if let Err(e) = server.save_game() {
+                        log::warn!("Horizon: saving the world on suspend: {e}");
+                    }
+                });
+            } else if self.remote.is_none()
+                && let Err(e) = self.save_game()
+            {
+                log::warn!("Horizon: saving the world on suspend: {e}");
+            }
+        }
     }
 }
 

@@ -29,7 +29,7 @@ pub(super) fn run_event_loop(mut game: Game<'_>) -> Result<()> {
         return game.error.take().map_or(Ok(()), Err);
     }
     let mut split = split::Split::new(game);
-    let result = EventLoop::new()?.run_app(&mut split);
+    let result = horizon_client::platform::event_loop()?.run_app(&mut split);
     game = split.host;
     narrator::stop();
     leave_fullscreen_after(&result, &mut game.settings);
@@ -79,12 +79,25 @@ impl Loading {
     /// the title is on the screen holds the title back by that build. Wait for
     /// one title frame first, unless a world is waiting to open.
     pub(super) fn ready_for_handoff(&self) -> bool {
+        // In the background (Android) the window has no surface for the game's renderer.
+        if self.renderer.as_ref().is_some_and(|r| r.surface_gone()) {
+            return false;
+        }
         self.title_drawn
             || self.menu.pending.is_some()
             || self.ui_at.is_none_or(|at| at.elapsed() >= TITLE_FRAME_WAIT)
     }
     pub(super) fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if let Some(window) = &self.window {
+            // Android's `Resumed` after `Suspended`: a new native surface for the window.
+            if let Some(renderer) = &mut self.renderer
+                && let Err(e) = renderer.resume_surface()
+            {
+                self.error = Some(e);
+                event_loop.exit();
+                return;
+            }
+            window.request_redraw();
             return;
         }
         // The Window constructor: created fullscreen when options.txt or --fullscreen says so.
@@ -415,6 +428,16 @@ impl ApplicationHandler for App {
     fn device_event(&mut self, event_loop: &ActiveEventLoop, id: DeviceId, event: DeviceEvent) {
         if let App::Ready(game) = self {
             game.device_event(event_loop, id, event);
+        }
+    }
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        match self {
+            App::Loading(loading) => {
+                if let Some(renderer) = &mut loading.renderer {
+                    renderer.drop_surface();
+                }
+            }
+            App::Ready(game) => game.suspended(event_loop),
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

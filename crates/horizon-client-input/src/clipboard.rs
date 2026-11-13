@@ -119,13 +119,39 @@ pub trait Clipboard {
     fn set(&mut self, text: &str);
 }
 
+#[cfg(not(target_os = "android"))]
+use arboard as system_clipboard;
+
+/// Android has no arboard backend: no system clipboard yet (a JNI `ClipboardManager`
+/// can come later), so copied text pastes only inside the game.
+#[cfg(target_os = "android")]
+mod system_clipboard {
+    pub struct Clipboard;
+    pub enum Error {
+        ContentNotAvailable,
+        #[allow(dead_code)]
+        Unavailable,
+    }
+    impl Clipboard {
+        pub fn new() -> Result<Self, Error> {
+            Err(Error::Unavailable)
+        }
+        pub fn get_text(&mut self) -> Result<String, Error> {
+            Err(Error::ContentNotAvailable)
+        }
+        pub fn set_text(&mut self, _text: String) -> Result<(), Error> {
+            Err(Error::Unavailable)
+        }
+    }
+}
+
 /// The system clipboard (`ClipboardManager`). On Wayland, arboard uses the
 /// data-control protocol and falls back to X11 (XWayland) on compositors
 /// without it. When no system clipboard can be reached, text copied in the
 /// game can still be pasted in the game.
 #[derive(Default)]
 pub struct SystemClipboard {
-    system: Option<arboard::Clipboard>,
+    system: Option<system_clipboard::Clipboard>,
     /// The text Horizon last copied (`horizon-ctl status`).
     copied: Option<String>,
 }
@@ -135,9 +161,9 @@ impl SystemClipboard {
     pub fn copied(&self) -> Option<&str> {
         self.copied.as_deref()
     }
-    fn system(&mut self) -> Option<&mut arboard::Clipboard> {
+    fn system(&mut self) -> Option<&mut system_clipboard::Clipboard> {
         if self.system.is_none() {
-            self.system = arboard::Clipboard::new().ok();
+            self.system = system_clipboard::Clipboard::new().ok();
         }
         self.system.as_mut()
     }
@@ -150,7 +176,7 @@ impl Clipboard for SystemClipboard {
         };
         match system.get_text() {
             Ok(text) => text,
-            Err(arboard::Error::ContentNotAvailable) => String::new(),
+            Err(system_clipboard::Error::ContentNotAvailable) => String::new(),
             Err(_) => {
                 // A lost connection (a restarted compositor): reconnect next time.
                 self.system = None;
