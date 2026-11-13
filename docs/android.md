@@ -45,9 +45,12 @@ cargo ndk -t arm64-v8a -P 26 build -p horizon-android --release
 ```
 
 In bct8925's fork, `.github/workflows/android-apk.yml` builds the APK, with the Minimap mod, on
-every push to `android` or `android-ayaneo-pocket`. The run keeps it as an artifact. The
-`ANDROID_DEBUG_KEYSTORE` secret (a debug keystore, base64) signs it, so it installs over a build
-from the PC that has that key.
+every push to `android` or `android-ayaneo-pocket`. It builds on a self-hosted runner on the PC
+(label `horizon-android`), which keeps its build folders between runs and copies each APK to
+`%USERPROFILE%\Horizon APKs`. With the repository variable `APK_RUNNER` set to `cloud`, it
+builds on GitHub's runner instead, signed by the `ANDROID_DEBUG_KEYSTORE` secret (the PC's debug
+keystore, base64), so its APKs install over the PC's. Either way the run keeps the APK as an
+artifact.
 
 ### Native mods
 

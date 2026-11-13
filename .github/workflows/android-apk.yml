@@ -1,8 +1,13 @@
 # The Android APK (docs/android.md), with the Minimap native mod built in, for bct8925's fork:
 # every push to its Android branches, or by hand (Actions > Android APK > Run workflow, or
 # `gh workflow run android-apk.yml --ref <branch>` once the file is on the default branch).
-# The APK is the run's artifact. It is signed with the key in the ANDROID_DEBUG_KEYSTORE secret
-# (a debug keystore, base64), so it installs over a build made on the PC with the same key.
+# The APK is the run's artifact.
+#
+# It builds on bct8925's PC (a self-hosted runner labelled `horizon-android`), whose build
+# folders stay warm between runs, and also leaves the APK in `%USERPROFILE%\Horizon APKs`.
+# With the repository variable APK_RUNNER set to `cloud`, it builds on GitHub's runner instead,
+# signed with the key in the ANDROID_DEBUG_KEYSTORE secret (a debug keystore, base64), so it
+# installs over the PC's builds, which its own debug key signs.
 name: Android APK
 
 on:
@@ -15,9 +20,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apk:
+  pc:
     # Only in the fork: upstream builds no APK.
-    if: github.repository == 'bct8925/horizon'
+    if: github.repository == 'bct8925/horizon' && vars.APK_RUNNER != 'cloud'
+    runs-on: [self-hosted, horizon-android]
+    timeout-minutes: 120
+    defaults:
+      run:
+        # Git's bash: started at logon, the runner may find WSL's `bash` or none.
+        shell: '"C:/Program Files/Git/bin/bash.exe" --noprofile --norc -eo pipefail {0}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The mods' copy of the source and its build folder (.local/android) stay between
+          # runs, so a build after a small change recompiles only what changed.
+          clean: false
+
+      - name: Tools
+        run: |
+          echo "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$LOCALAPPDATA\Android\Sdk" >> "$GITHUB_ENV"
+
+      - name: Minimap mod
+        run: |
+          if [ -d .local/android/horizon-mods/.git ]; then
+            git -C .local/android/horizon-mods pull --ff-only
+          else
+            git clone --depth 1 https://github.com/horizon-rust/horizon-mods .local/android/horizon-mods
+          fi
+
+      - name: Build
+        working-directory: packaging/android
+        run: ./gradlew assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
+
+      - name: Keep a copy
+        run: |
+          out="$USERPROFILE/Horizon APKs"
+          mkdir -p "$out"
+          apk=packaging/android/app/build/outputs/apk/release/app-release.apk
+          cp "$apk" "$out/horizon-${GITHUB_REF_NAME}-${GITHUB_SHA::9}.apk"
+          cp "$apk" "$out/horizon-${GITHUB_REF_NAME}-latest.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horizon-${{ github.ref_name }}-${{ github.sha }}
+          path: packaging/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  cloud:
+    if: github.repository == 'bct8925/horizon' && vars.APK_RUNNER == 'cloud'
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
