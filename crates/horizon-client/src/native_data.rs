@@ -30,8 +30,18 @@ macro_rules! native_data {
 /// native build's version folder. Empty or missing for a mod without one. None when the
 /// game's own path is unknown: never a folder relative to wherever the game was started.
 pub fn built(mod_id: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join("native-data").join(mod_id))
+    Some(version_dir()?.join("native-data").join(mod_id))
+}
+
+/// The native build's version folder, which holds its mods' `native-content/` and
+/// `native-data/`: the game executable's folder, or `HORIZON_VERSION_DIR` where the game isn't a
+/// program in a folder of its own (Android's app unpacks them into its storage). None when the
+/// game's own path is unknown.
+pub fn version_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("HORIZON_VERSION_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    std::env::current_exe().ok()?.parent().map(|p| p.to_owned())
 }
 
 #[cfg(test)]

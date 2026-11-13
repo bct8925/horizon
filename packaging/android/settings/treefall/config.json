@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "sneak": "disables",
+  "tool": "axe",
+  "maxLogs": 256,
+  "minLeaves": 5,
+  "breakLeaves": false,
+  "breakSpeed": "single",
+  "speedFactor": 0.5,
+  "maxSlowdown": 20.0,
+  "durability": "perLog",
+  "durabilityFactor": 0.5,
+  "keepDurability": 1,
+  "dropsAtStump": false,
+  "replant": true,
+  "exhaustion": "perLog",
+  "woods": {
+    "allow": [],
+    "deny": []
+  },
+  "mushrooms": false
+}

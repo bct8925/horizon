@@ -79,6 +79,8 @@ public class HorizonActivity extends GameActivity
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Before the game starts with GameActivity's onCreate: the files of the mods built in.
+        ModFiles.unpack(this);
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);

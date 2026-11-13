@@ -14,7 +14,7 @@ name: Android APK
 
 on:
   push:
-    branches: [android, android-ayaneo-pocket]
+    branches: [android, android-ayaneo-pocket, android-ayaneo-mods]
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +26,7 @@ jobs:
     # Only in the fork: upstream builds no APK.
     if: >-
       github.repository == 'bct8925/horizon' && vars.APK_RUNNER != 'cloud'
-      && github.ref_name == 'android-ayaneo-pocket'
+      && (github.ref_name == 'android-ayaneo-pocket' || github.ref_name == 'android-ayaneo-mods')
     runs-on: [self-hosted, horizon-android]
     timeout-minutes: 120
     env:
@@ -35,6 +35,11 @@ jobs:
       HORIZON_ANDROID_DIR: >-
         ${{ github.ref_name == 'android-ayaneo-pocket' && '.local/android'
         || format('.local/android-{0}', github.ref_name) }}
+      # android-ayaneo-mods builds with every mod of packaging/android/mods.toml (bct8925's own,
+      # private: the runner fetches them with the PC's git sign-in), the rest with the Minimap.
+      NATIVE_MODS: >-
+        ${{ github.ref_name == 'android-ayaneo-mods' && 'packaging/android/mods.toml'
+        || '.local/android/horizon-mods/native/minimap' }}
     defaults:
       run:
         # cmd and Windows PowerShell are always there, wherever the runner was started from;
@@ -62,7 +67,7 @@ jobs:
 
       - name: Build
         working-directory: packaging/android
-        run: call .\gradlew.bat assembleRelease "-PnativeMods=.local/android/horizon-mods/native/minimap"
+        run: call .\gradlew.bat assembleRelease "-PnativeMods=%NATIVE_MODS%"
 
       - name: Keep a copy
         shell: powershell
@@ -84,7 +89,7 @@ jobs:
   cloud:
     if: >-
       github.repository == 'bct8925/horizon' && (vars.APK_RUNNER == 'cloud'
-      || github.ref_name != 'android-ayaneo-pocket')
+      || (github.ref_name != 'android-ayaneo-pocket' && github.ref_name != 'android-ayaneo-mods'))
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:

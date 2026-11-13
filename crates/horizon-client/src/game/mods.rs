@@ -98,9 +98,7 @@ pub(super) fn content_root(
     dev: &[std::path::PathBuf],
 ) -> std::path::PathBuf {
     let here = std::env::current_dir().unwrap_or_default();
-    let version = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_owned()));
+    let version = horizon_client::native_data::version_dir();
     content_root_at(root, enabled, disabled, dev, &here, version.as_deref())
 }
 

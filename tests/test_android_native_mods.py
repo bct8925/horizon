@@ -68,5 +68,66 @@ class SyncTest(unittest.TestCase):
         self.assertEqual((self.stage / "target" / "debug" / "game").read_text(), "built")
 
 
+
+class ModFolderTest(unittest.TestCase):
+    """A mod's folder: native code, content, or both, as git repositories and the registry ship them."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.base = Path(self.dir.name)
+        self.old = (mods.BUNDLES, mods.STAGE)
+        mods.BUNDLES = self.base / "bundles"
+
+    def tearDown(self):
+        mods.BUNDLES, mods.STAGE = self.old
+        self.dir.cleanup()
+
+    def bundle(self, folder, mod_id, target):
+        write(folder / "mixins" / mod_id / "horizon-mixin.toml",
+              f'[mod]\nid = "{mod_id}"\n[compatibility]\nhorizon_revision = "{"a" * 40}"\n'
+              f'[[injection]]\ntarget = "{target}"\n')
+
+    def test_a_registry_hnmod_names_its_horizon_mixins_in_its_manifest(self):
+        folder = self.base / "treefall"
+        self.bundle(folder, "treefall", "game::Game::break_block")
+        write(folder / "horizon-native.json", '{"id": "treefall", "mixins": "0d6b103"}')
+        mod = mods.native_part(folder)
+        self.assertEqual(mod.id, "treefall")
+        self.assertEqual(mod.compat["horizon_mixins_revision"], "0d6b103")
+        self.assertIsNone(mods.content_part(folder))
+
+    def test_content_is_found_in_the_folder_or_its_content_folder(self):
+        content_only = self.base / "mythril"
+        write(content_only / "horizon-mod.toml", 'id = "mythril"\n')
+        both = self.base / "botanypots"
+        self.bundle(both, "botanypots", "x")
+        write(both / "compatibility.json", '{"horizon_mixins_revision": "d9c83d7"}')
+        write(both / "content" / "horizon-mod.toml", 'id = "botanypots"\n')
+        self.assertIsNone(mods.native_part(content_only))
+        self.assertEqual(mods.content_id(mods.content_part(content_only)), "mythril")
+        self.assertEqual(mods.content_part(both), (both / "content").resolve())
+        self.assertEqual(mods.native_part(both).id, "botanypots")
+
+    def test_a_moved_function_s_injections_are_retargeted_and_the_build_pinned(self):
+        folder = self.base / "treefall"
+        self.bundle(folder, "treefall", "game::Game::break_block")
+        write(folder / "horizon-native.json", '{"mixins": "0d6b103"}')
+        mod = mods.native_part(folder)
+        mod.retarget = {"game::Game::break_block": "game::block_breaking::Game::break_block"}
+        mods.copy_bundles([mod], "b" * 40)
+        toml = (mods.BUNDLES / "treefall" / "horizon-mixin.toml").read_text()
+        self.assertIn('target = "game::block_breaking::Game::break_block"', toml)
+        self.assertIn(f'horizon_revision = "{"b" * 40}"', toml)
+
+    def test_a_retarget_naming_no_injection_stops_the_build(self):
+        folder = self.base / "lookat"
+        self.bundle(folder, "lookat", "game::Game::native_hud")
+        write(folder / "horizon-native.json", '{"mixins": "0d6b103"}')
+        mod = mods.native_part(folder)
+        mod.retarget = {"game::Game::gone": "game::Game::elsewhere"}
+        with self.assertRaises(SystemExit):
+            mods.copy_bundles([mod], "b" * 40)
+
+
 if __name__ == "__main__":
     unittest.main()

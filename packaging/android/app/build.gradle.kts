@@ -53,19 +53,30 @@ val workspace = rootDir.resolve("../..").canonicalFile
 // `-PnativeMods=<folder>;<folder>` (each absolute or from the repository root) builds native
 // mods into the game, as the launcher does on a PC: tools/android_native_mods.py applies them on
 // a copy of the source in .local/android/stage, and cargo-ndk builds that copy (with its own
-// target folder, .local/android/target).
+// target folder, .local/android/target). A `.toml` there is a list of mods to fetch
+// (packaging/android/mods.toml). The mods' content goes into the APK's assets as
+// `native-content/<id>/`, which HorizonActivity unpacks for the game.
 val nativeMods = (findProperty("nativeMods") as String?)
     ?.split(';')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
 // HORIZON_ANDROID_DIR (absolute or from the repository root): another work folder for the stage
 // and its build, as tools/android_native_mods.py takes it, so each branch keeps its own warm.
 val androidWork = workspace.resolve(System.getenv("HORIZON_ANDROID_DIR") ?: ".local/android")
+val modAssets = layout.buildDirectory.dir("generated/horizon-mod-assets").get().asFile
+if (nativeMods.isNotEmpty()) {
+    android.sourceSets.getByName("main").assets.srcDir(modAssets)
+}
 val stageNativeMods = tasks.register<Exec>("stageNativeMods") {
     group = "build"
-    description = "Applies native mods on a copy of Horizon's source"
+    description = "Applies native mods on a copy of Horizon's source, and exports their content"
     workingDir = workspace
     val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
-    val folders = nativeMods.map { workspace.resolve(it).path }
-    commandLine(listOf(python, "tools/android_native_mods.py") + folders)
+    val mods = nativeMods.flatMap {
+        val path = workspace.resolve(it).path
+        if (it.endsWith(".toml")) listOf("--manifest", path) else listOf(path)
+    }
+    commandLine(
+        listOf(python, "tools/android_native_mods.py", "--content-out", modAssets.path) + mods,
+    )
 }
 val cargoNdk = tasks.register<Exec>("cargoNdk") {
     group = "build"

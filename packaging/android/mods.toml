@@ -1,0 +1,68 @@
+# The mods built into the AYANEO Pocket DS's APK (docs/android.md): each a git repository, the
+# branch to build and the folder in it with the mod (`compatibility.json` and `mixins/<id>/` for
+# its native code, `horizon-mod.toml` with `assets/` and `data/`, there or in `content/`, for its
+# content). tools/android_native_mods.py fetches them into .local/android/mod-sources; the
+# private ones need this machine's git sign-in. `-PnativeMods=packaging/android/mods.toml` builds
+# with them.
+
+[[mod]]
+name = "minimap"
+repo = "https://github.com/horizon-rust/horizon-mods"
+ref = "main"
+path = "native/minimap"
+
+[[mod]]
+name = "botanypots"
+repo = "https://github.com/bct8925/BotanyPots"
+ref = "main"
+
+[[mod]]
+name = "torchshield"
+repo = "https://github.com/bct8925/TorchShield"
+ref = "main"
+
+[[mod]]
+name = "simpledrills"
+repo = "https://github.com/bct8925/SimpleDrills"
+ref = "horizon-port"
+path = "horizon"
+
+[[mod]]
+name = "mythril"
+repo = "https://github.com/bct8925/Mythril"
+ref = "horizon-port"
+path = "horizon"
+
+[[mod]]
+name = "simpleharvest"
+repo = "https://github.com/bct8925/SimpleHarvest"
+ref = "horizon-port"
+path = "horizon"
+
+[[mod]]
+name = "crouchgrow"
+repo = "https://github.com/bct8925/CrouchGrow"
+ref = "horizon-port"
+path = "horizon"
+
+# Torch Shield's light when held: the dynamic light tags it ships are read by this one.
+[[mod]]
+name = "dynamiclighttags"
+repo = "https://github.com/bct8925/DynamicLightTags"
+ref = "main"
+
+# From Horizon's registry, as installed in the desktop launcher's "Native mods" instance (both MIT,
+# by d3grando). Their settings from that instance are in settings/<id>/.
+[[mod]]
+name = "treefall"
+url = "https://github.com/horizon-rust/horizon-mods/releases/download/treefall-0.3.0/treefall-0.3.0.hnmod"
+sha256 = "6f7feea8d0f55291953476b272f00cfc4be42d64972e7efefeb3df47c9dae8ce"
+# Made for Horizon 142388e: two of the game functions it hooks have moved into modules since.
+[mod.retarget]
+"horizon_client::game::Game<'_>::break_block" = "horizon_client::game::block_breaking::Game<'_>::break_block"
+"horizon_client::game::Game<'_>::pop_resource" = "horizon_client::game::item_entities::Game<'_>::pop_resource"
+
+[[mod]]
+name = "lookat"
+url = "https://github.com/horizon-rust/horizon-mods/releases/download/lookat-0.2.1/lookat-0.2.1.hnmod"
+sha256 = "6c15726116825b5955984223d0e1bccd5d18375005af243a061b2ba2b9139f33"

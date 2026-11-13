@@ -9,11 +9,24 @@ commit the mods pin, built once into `.local/android/tools`), and leaves the res
 the stage and the build folder elsewhere (one per branch, say). Only files that changed are
 replaced in the stage, so cargo rebuilds only what changed. The checkout itself is never edited.
 
-Each argument is a native mod's folder as horizon-rust/horizon-mods has it (`native/minimap`):
-a `compatibility.json` and a `mixins/<id>/horizon-mixin.toml` bundle.
+Each argument is a mod's folder. Its native code is a `compatibility.json` beside
+`mixins/<id>/horizon-mixin.toml` (as horizon-rust/horizon-mods has `native/minimap`), its content
+a `horizon-mod.toml` with `assets/` and `data/`, in the folder or in its `content/`; a mod may
+have either or both, or it is a registry's `.hnmod` (`horizon-native.json` and the bundle).
+`--manifest` takes them from a list instead (packaging/android/mods.toml): each `[[mod]]` a git
+repository, its branch and the folder in it, or a file's `url` and `sha256` (an `.hnmod` from
+Horizon's registry), fetched into `.local/android/mod-sources/<name>` (a private repository with
+this machine's git sign-in); a `settings` folder beside the list holds settings for the APK.
+A mod's `retarget` table moves its injections from a game function that has moved since the
+Horizon it was made for to where that function is now (`"old path" = "new path"`).
+`--content-out DIR` writes the mods' content to `DIR/native-content/<id>/`, which the APK packs
+and the game reads at start, as the desktop game reads its version folder's `native-content/`.
+When the mods pin different horizon-mixins commits, the newest of them applies them all.
 
     python tools/android_native_mods.py ../horizon-mods/native/minimap
+    python tools/android_native_mods.py --manifest packaging/android/mods.toml --content-out out
 """
+import argparse
 import filecmp
 import json
 import os
@@ -21,6 +34,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
+import hashlib
+import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # builds of different branches each keep theirs warm; horizon-mixins stays shared.
 WORK = ROOT / os.environ.get("HORIZON_ANDROID_DIR", str(Path(".local") / "android"))
 TOOLS = ROOT / ".local" / "android" / "tools"
+SOURCES = ROOT / ".local" / "android" / "mod-sources"
 SOURCE = WORK / "source"
 BUNDLES = WORK / "mods"
 STAGE = WORK / "stage"
@@ -53,28 +71,115 @@ def same_record(fresh, kept):
     return a == b
 
 
+MIXINS_REPOSITORY = "https://github.com/horizon-rust/horizon-mixins"
+
+
 class NativeMod:
     def __init__(self, folder):
         self.root = Path(folder).resolve()
-        self.compat = json.loads((self.root / "compatibility.json").read_text(encoding="utf-8"))
+        compat = self.root / "compatibility.json"
+        if compat.is_file():
+            self.compat = json.loads(compat.read_text(encoding="utf-8"))
+        else:
+            # A registry `.hnmod`: its horizon-native.json names the horizon-mixins commit.
+            native = json.loads((self.root / "horizon-native.json").read_text(encoding="utf-8"))
+            self.compat = {"horizon_mixins_revision": native["mixins"],
+                           "horizon_mixins_repository": MIXINS_REPOSITORY}
         bundles = [p for p in (self.root / "mixins").iterdir() if (p / "horizon-mixin.toml").is_file()]
         if len(bundles) != 1:
             sys.exit(f"{self.root}: expected one mixins/<id>/horizon-mixin.toml, found {len(bundles)}")
         self.bundle = bundles[0]
         self.id = self.bundle.name
+        self.retarget = {}
+
+
+def native_part(folder):
+    """The folder's native code, if it has any."""
+    folder = Path(folder)
+    manifests = (folder / "compatibility.json", folder / "horizon-native.json")
+    if any(m.is_file() for m in manifests) and (folder / "mixins").is_dir():
+        return NativeMod(folder)
+    return None
+
+
+def content_part(folder):
+    """The folder holding the mod's content (`horizon-mod.toml`, `assets/`, `data/`), if any."""
+    folder = Path(folder).resolve()
+    for candidate in (folder, folder / "content"):
+        if (candidate / "horizon-mod.toml").is_file():
+            return candidate
+    return None
+
+
+def content_id(folder):
+    return tomllib.loads((folder / "horizon-mod.toml").read_text(encoding="utf-8"))["id"]
+
+
+def download(entry, dest):
+    """A `[[mod]]` that is a file (`url`, `sha256`): downloaded once, checked, and unpacked."""
+    archive = dest / entry["url"].rsplit("/", 1)[-1]
+    unpacked = dest / "unpacked"
+    if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest() != entry["sha256"]:
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.mkdir(parents=True)
+        with urllib.request.urlopen(entry["url"]) as response:
+            data = response.read()
+        if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            sys.exit(f"{entry['url']}: not the file its sha256 names")
+        archive.write_bytes(data)
+    shutil.rmtree(unpacked, ignore_errors=True)
+    with zipfile.ZipFile(archive) as z:
+        for name in z.namelist():
+            if name.startswith("/") or ".." in Path(name).parts:
+                sys.exit(f"{archive}: {name} would land outside its folder")
+        z.extractall(unpacked)
+    return unpacked
+
+
+def fetch(entry):
+    """A `[[mod]]` of the list: its repository at its branch (fetched or brought up to date), or
+    its file."""
+    dest = SOURCES / entry["name"]
+    if "url" in entry:
+        return download(entry, dest)
+    ref = entry.get("ref", "main")
+    if (dest / ".git").is_dir():
+        subprocess.run(["git", "-C", str(dest), "fetch", "-q", "--depth", "1", "origin", ref], check=True)
+        subprocess.run(["git", "-C", str(dest), "checkout", "-q", "--detach", "FETCH_HEAD"], check=True)
+    else:
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", ref, entry["repo"], str(dest)],
+                       check=True)
+    return dest / entry.get("path", ".")
+
+
+def newest(revs, repo):
+    """Of horizon-mixins commits on one line of history, the newest: a bundle made for an older one
+    applies with a newer one."""
+    git = TOOLS / "horizon-mixins.git"
+    if not git.is_dir():
+        subprocess.run(["git", "init", "-q", "--bare", str(git)], check=True)
+    for rev in revs:
+        subprocess.run(["git", "-C", str(git), "fetch", "-q", "--filter=blob:none", repo, rev], check=True)
+    best = revs[0]
+    for rev in revs[1:]:
+        if subprocess.run(["git", "-C", str(git), "merge-base", "--is-ancestor", best, rev]).returncode == 0:
+            best = rev
+        elif subprocess.run(["git", "-C", str(git), "merge-base", "--is-ancestor", rev, best]).returncode != 0:
+            sys.exit(f"the mods pin horizon-mixins commits on different lines: {best[:7]}, {rev[:7]}")
+    return best
 
 
 def tool(mods):
-    """horizon-mixins at the commit the mods pin, built once."""
-    revs = {m.compat["horizon_mixins_revision"] for m in mods}
-    if len(revs) != 1:
-        sys.exit(f"the mods pin different horizon-mixins commits: {sorted(revs)}")
-    rev = revs.pop()
+    """horizon-mixins at the commit the mods pin (the newest of them), built once."""
+    revs = sorted({m.compat["horizon_mixins_revision"] for m in mods})
+    repo = mods[0].compat["horizon_mixins_repository"]
+    rev = revs[0] if len(revs) == 1 else newest(revs, repo)
     root = TOOLS / "horizon-mixins" / rev
     binary = root / "bin" / f"horizon-mixins{EXE}"
     if not binary.is_file():
         print(f"Building horizon-mixins {rev[:7]}", flush=True)
-        repo = mods[0].compat["horizon_mixins_repository"]
         subprocess.run(["cargo", "install", "--locked", "--quiet", "--git", repo, "--rev", rev,
                         "--root", str(root), "horizon-mixins-cli"], check=True)
     return binary
@@ -107,8 +212,13 @@ def copy_bundles(mods, revision):
         if licence.is_file() and not (BUNDLES / m.id / "LICENSE").exists():
             shutil.copy2(licence, BUNDLES / m.id / "LICENSE")
         toml = BUNDLES / m.id / "horizon-mixin.toml"
-        toml.write_text(re.sub(r'horizon_revision = "[0-9a-f]{40}"', f'horizon_revision = "{revision}"',
-                               toml.read_text(encoding="utf-8")), encoding="utf-8")
+        text = re.sub(r'horizon_revision = "[0-9a-f]{40}"', f'horizon_revision = "{revision}"',
+                      toml.read_text(encoding="utf-8"))
+        for old, new in m.retarget.items():
+            if f'target = "{old}"' not in text:
+                sys.exit(f"{m.id}: no injection targets {old} to move")
+            text = text.replace(f'target = "{old}"', f'target = "{new}"')
+        toml.write_text(text, encoding="utf-8")
 
 
 def sync(fresh, out):
@@ -129,10 +239,44 @@ def sync(fresh, out):
             shutil.copy2(entry, target)
 
 
+def export_content(folders, out, settings=None):
+    """The mods' content under `out/native-content/<id>/`, as a build's version folder has it, and
+    their settings (`settings/<id>/`, as `.horizon-mod-data/<id>/` holds them) under
+    `out/mod-settings/`."""
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    for folder in folders:
+        shutil.copytree(folder, out / "native-content" / content_id(folder))
+    if settings and settings.is_dir():
+        shutil.copytree(settings, out / "mod-settings")
+
+
 def main():
-    if len(sys.argv) < 2:
+    parser = argparse.ArgumentParser(description="Stages Horizon with native mods applied.")
+    parser.add_argument("folders", nargs="*", help="mod folders")
+    parser.add_argument("--manifest", help="a list of mods to fetch (packaging/android/mods.toml)")
+    parser.add_argument("--content-out", help="where the mods' content goes for the APK")
+    args = parser.parse_args()
+    folders = [Path(f).resolve() for f in args.folders]
+    retargets = [{} for _ in folders]
+    if args.manifest:
+        listed = tomllib.loads(Path(args.manifest).read_text(encoding="utf-8")).get("mod", [])
+        folders += [fetch(entry).resolve() for entry in listed]
+        retargets += [entry.get("retarget", {}) for entry in listed]
+    if not folders:
         sys.exit(__doc__)
-    mods = [NativeMod(folder) for folder in sys.argv[1:]]
+    mods = []
+    for folder, retarget in zip(folders, retargets):
+        if m := native_part(folder):
+            m.retarget = retarget
+            mods.append(m)
+    contents = [c for c in map(content_part, folders) if c]
+    if args.content_out:
+        settings = Path(args.manifest).resolve().parent / "settings" if args.manifest else None
+        export_content(contents, Path(args.content_out).resolve(), settings)
+        print(f"Content of {', '.join(map(content_id, contents)) or 'no mod'} in {args.content_out}")
+    if not mods:
+        sys.exit("no native mod to apply")
     binary = tool(mods)
     revision = copy_source()
     copy_bundles(mods, revision)

@@ -32,6 +32,11 @@ fn android_main(app: AndroidApp) {
         std::env::set_var("XDG_RUNTIME_DIR", folders.home.join("run"));
         // Discord has no desktop client to talk to here.
         std::env::set_var("HORIZON_NO_DISCORD", "1");
+        // The version folder of a native build, as the launcher's is on a PC: HorizonActivity
+        // (ModFiles) unpacks the built-in mods' `native-content/` into the app's files folder.
+        if let Some(files) = folders.home.parent() {
+            std::env::set_var("HORIZON_VERSION_DIR", files);
+        }
         // `--benchmark`'s reports where a PC can read them (`adb pull`), beside the resources.
         std::env::set_var("HORIZON_BENCHMARK_DIR", folders.external.join("benchmarks"));
         // Vulkan, as wgpu picks it, else OpenGL ES; `env.WGPU_BACKEND=gl` in

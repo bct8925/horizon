@@ -75,6 +75,18 @@ the repository root:
 copy with its own target folder, `.local/android/target`. Your checkout is never edited. Without
 `nativeMods`, the game is built without any.
 
+`-PnativeMods=packaging/android/mods.toml` builds the mods that list names instead. Each entry is
+either a git repository, branch and folder (fetched with this machine's git sign-in, so private
+repositories work) or a registry `.hnmod` by URL and SHA-256. A mod may bring native code, content
+(`horizon-mod.toml`, `assets/`, `data/`), or both. When the mods pin different horizon-mixins
+commits, the newest applies them all. A mod made for an older Horizon whose hooked functions have
+since moved gets a `retarget` table naming where they are now. The content goes into the APK as
+`native-content/<id>/`. `ModFiles` unpacks it into the app's files folder at start, replacing it
+when the APK changes, and the game reads it there (`HORIZON_VERSION_DIR`), as it reads a native
+build's version folder on a PC. `packaging/android/settings/<id>/` holds settings for those mods.
+They're copied into `horizon-mods/.horizon-mod-data/<id>/` only where the player has none yet, so
+settings changed in the game stay. The `android-ayaneo-mods` branch builds with that list.
+
 ## Install and play
 
 1. On the device, turn on Developer options and then USB debugging, and connect it.
