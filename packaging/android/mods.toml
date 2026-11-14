@@ -61,6 +61,24 @@ sha256 = "6f7feea8d0f55291953476b272f00cfc4be42d64972e7efefeb3df47c9dae8ce"
 [mod.retarget]
 "horizon_client::game::Game<'_>::break_block" = "horizon_client::game::block_breaking::Game<'_>::break_block"
 "horizon_client::game::Game<'_>::pop_resource" = "horizon_client::game::item_entities::Game<'_>::pop_resource"
+# `Dim` lost its height bounds to the world's shape (its max_y is exclusive)...
+[[mod.replace]]
+file = "native.rs"
+old = "p[1] < game.dim.min_y() || p[1] > game.dim.max_y()"
+new = "p[1] < game.world.shape.min_y || p[1] >= game.world.shape.max_y()"
+# ...and destroy_progress, which the slowed cut calls, takes the game mutably now.
+[[mod.replace]]
+file = "native.rs"
+old = "pub(super) fn treefall_destroy_progress(&self, pos: Position)"
+new = "pub(super) fn treefall_destroy_progress(&mut self, pos: Position)"
+[[mod.replace]]
+file = "speed.rs"
+old = "fn treefall_speed(game: &crate::game::Game<'_>,"
+new = "fn treefall_speed(game: &mut crate::game::Game<'_>,"
+[[mod.replace]]
+file = "horizon-mixin.toml"
+old = "{ name = \"game\", ty = \"&crate::game::Game<'_>\", value = \"self\" },"
+new = "{ name = \"game\", ty = \"&mut crate::game::Game<'_>\", value = \"&mut *self\" },"
 
 [[mod]]
 name = "lookat"

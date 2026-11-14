@@ -18,7 +18,9 @@ repository, its branch and the folder in it, or a file's `url` and `sha256` (an 
 Horizon's registry), fetched into `.local/android/mod-sources/<name>` (a private repository with
 this machine's git sign-in); a `settings` folder beside the list holds settings for the APK.
 A mod's `retarget` table moves its injections from a game function that has moved since the
-Horizon it was made for to where that function is now (`"old path" = "new path"`).
+Horizon it was made for to where that function is now (`"old path" = "new path"`), and its
+`[[mod.replace]]` entries (`file`, `old`, `new`) edit its code where the game's own changed under
+it; each must find its text exactly once.
 `--content-out DIR` writes the mods' content to `DIR/native-content/<id>/`, which the APK packs
 and the game reads at start, as the desktop game reads its version folder's `native-content/`.
 When the mods pin different horizon-mixins commits, the newest of them applies them all.
@@ -91,6 +93,7 @@ class NativeMod:
         self.bundle = bundles[0]
         self.id = self.bundle.name
         self.retarget = {}
+        self.replace = []
 
 
 def native_part(folder):
@@ -219,6 +222,12 @@ def copy_bundles(mods, revision):
                 sys.exit(f"{m.id}: no injection targets {old} to move")
             text = text.replace(f'target = "{old}"', f'target = "{new}"')
         toml.write_text(text, encoding="utf-8")
+        for edit in m.replace:
+            path = BUNDLES / m.id / edit["file"]
+            code = path.read_text(encoding="utf-8")
+            if code.count(edit["old"]) != 1:
+                sys.exit(f"{m.id}: {edit['file']} has {code.count(edit['old'])} copies of {edit['old']!r}")
+            path.write_text(code.replace(edit["old"], edit["new"]), encoding="utf-8")
 
 
 def sync(fresh, out):
@@ -258,17 +267,17 @@ def main():
     parser.add_argument("--content-out", help="where the mods' content goes for the APK")
     args = parser.parse_args()
     folders = [Path(f).resolve() for f in args.folders]
-    retargets = [{} for _ in folders]
+    edits = [({}, []) for _ in folders]
     if args.manifest:
         listed = tomllib.loads(Path(args.manifest).read_text(encoding="utf-8")).get("mod", [])
         folders += [fetch(entry).resolve() for entry in listed]
-        retargets += [entry.get("retarget", {}) for entry in listed]
+        edits += [(entry.get("retarget", {}), entry.get("replace", [])) for entry in listed]
     if not folders:
         sys.exit(__doc__)
     mods = []
-    for folder, retarget in zip(folders, retargets):
+    for folder, (retarget, replace) in zip(folders, edits):
         if m := native_part(folder):
-            m.retarget = retarget
+            m.retarget, m.replace = retarget, replace
             mods.append(m)
     contents = [c for c in map(content_part, folders) if c]
     if args.content_out:
