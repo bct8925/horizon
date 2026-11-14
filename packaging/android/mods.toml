@@ -55,6 +55,11 @@ repo = "https://github.com/bct8925/CrouchGrow"
 ref = "horizon-port"
 path = "horizon"
 
+[[mod]]
+name = "tombstones"
+repo = "https://github.com/bct8925/Tombstones"
+ref = "main"
+
 # Torch Shield's light when held: the dynamic light tags it ships are read by this one.
 [[mod]]
 name = "dynamiclighttags"
