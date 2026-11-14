@@ -129,5 +129,19 @@ class ModFolderTest(unittest.TestCase):
             mods.copy_bundles([mod], "b" * 40)
 
 
+    def test_a_module_s_heading_doc_comments_become_plain_ones(self):
+        folder = self.base / "mythril"
+        write(folder / "mixins" / "mythril" / "horizon-mixin.toml",
+              '[mod]\nid = "mythril"\n[compatibility]\nhorizon_revision = "' + "a" * 40 + '"\n'
+              '[[module]]\nsource = "ore.rs"\n')
+        write(folder / "mixins" / "mythril" / "ore.rs", "//! The ore.\n//! More.\nfn f() {}\n//! kept\n")
+        write(folder / "compatibility.json", '{"horizon_mixins_revision": "d9c83d7"}')
+        mod = mods.native_part(folder)
+        mod.plain_module_comments = True
+        mods.copy_bundles([mod], "b" * 40)
+        self.assertEqual((mods.BUNDLES / "mythril" / "ore.rs").read_text(),
+                         "// The ore.\n// More.\nfn f() {}\n//! kept\n")
+
+
 if __name__ == "__main__":
     unittest.main()

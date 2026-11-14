@@ -32,6 +32,23 @@ name = "mythril"
 repo = "https://github.com/bct8925/Mythril"
 ref = "horizon-port"
 path = "horizon"
+# Its modules open with `//!` doc comments, which this build's newer horizon-mixins refuses.
+plain_module_comments = true
+# Made for Horizon fdc87ae: the generator's biome feature lists are bit sets (one bit per
+# feature, as Decoration::biome_allows_feature reads them) now, not sets of features.
+[[mod.replace]]
+file = "replay.rs"
+old = "biome_features: &'a [BTreeSet<FeatureIdentity>],"
+new = "biome_features: &'a [Vec<u64>],"
+[[mod.replace]]
+file = "replay.rs"
+old = ".is_some_and(|features| features.contains(&feature)),"
+new = ".is_some_and(|bits| bits.get(feature.0 as usize / 64).is_some_and(|w| w >> (feature.0 % 64) & 1 != 0)),"
+# NativeBlockEdit has gained block entities and neighbour updates: none of either, as before.
+[[mod.replace]]
+file = "glue.rs"
+old = "            .collect(),\n    }\n}\n\n/// No chunks:"
+new = "            .collect(),\n        neighbour_updates: false,\n        block_entities: Vec::new(),\n    }\n}\n\n/// No chunks:"
 
 [[mod]]
 name = "simpleharvest"

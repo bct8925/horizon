@@ -20,7 +20,9 @@ this machine's git sign-in); a `settings` folder beside the list holds settings 
 A mod's `retarget` table moves its injections from a game function that has moved since the
 Horizon it was made for to where that function is now (`"old path" = "new path"`), and its
 `[[mod.replace]]` entries (`file`, `old`, `new`) edit its code where the game's own changed under
-it; each must find its text exactly once.
+it; each must find its text exactly once. `plain_module_comments = true` turns the `//!` lines
+heading its `[[module]]` sources into `//`: newer horizon-mixins refuse a module that opens with
+inner attributes, which those doc comments are.
 `--content-out DIR` writes the mods' content to `DIR/native-content/<id>/`, which the APK packs
 and the game reads at start, as the desktop game reads its version folder's `native-content/`.
 When the mods pin different horizon-mixins commits, the newest of them applies them all.
@@ -94,6 +96,7 @@ class NativeMod:
         self.id = self.bundle.name
         self.retarget = {}
         self.replace = []
+        self.plain_module_comments = False
 
 
 def native_part(folder):
@@ -222,12 +225,26 @@ def copy_bundles(mods, revision):
                 sys.exit(f"{m.id}: no injection targets {old} to move")
             text = text.replace(f'target = "{old}"', f'target = "{new}"')
         toml.write_text(text, encoding="utf-8")
+        if m.plain_module_comments:
+            plain_module_comments(BUNDLES / m.id, text)
         for edit in m.replace:
             path = BUNDLES / m.id / edit["file"]
             code = path.read_text(encoding="utf-8")
             if code.count(edit["old"]) != 1:
                 sys.exit(f"{m.id}: {edit['file']} has {code.count(edit['old'])} copies of {edit['old']!r}")
             path.write_text(code.replace(edit["old"], edit["new"]), encoding="utf-8")
+
+
+def plain_module_comments(bundle, toml_text):
+    """The `//!` lines heading each `[[module]]` source of the bundle, as `//`."""
+    for module in tomllib.loads(toml_text).get("module", []):
+        path = bundle / module["source"]
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for i, line in enumerate(lines):
+            if not line.startswith("//!"):
+                break
+            lines[i] = "//" + line[3:]
+        path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def sync(fresh, out):
@@ -267,17 +284,18 @@ def main():
     parser.add_argument("--content-out", help="where the mods' content goes for the APK")
     args = parser.parse_args()
     folders = [Path(f).resolve() for f in args.folders]
-    edits = [({}, []) for _ in folders]
+    edits = [({}, [], False) for _ in folders]
     if args.manifest:
         listed = tomllib.loads(Path(args.manifest).read_text(encoding="utf-8")).get("mod", [])
         folders += [fetch(entry).resolve() for entry in listed]
-        edits += [(entry.get("retarget", {}), entry.get("replace", [])) for entry in listed]
+        edits += [(entry.get("retarget", {}), entry.get("replace", []),
+                   entry.get("plain_module_comments", False)) for entry in listed]
     if not folders:
         sys.exit(__doc__)
     mods = []
-    for folder, (retarget, replace) in zip(folders, edits):
+    for folder, (retarget, replace, plain) in zip(folders, edits):
         if m := native_part(folder):
-            m.retarget, m.replace = retarget, replace
+            m.retarget, m.replace, m.plain_module_comments = retarget, replace, plain
             mods.append(m)
     contents = [c for c in map(content_part, folders) if c]
     if args.content_out:
